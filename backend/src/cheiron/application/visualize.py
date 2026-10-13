@@ -55,11 +55,7 @@ async def visualize(
     source: TrialSource,
     max_trials_per_cohort: int = DEFAULT_MAX_TRIALS,
 ) -> Answer:
+    """Cohorts that match nothing are reported by run_plan's notes."""
     grounded = await plan_question(question, planner)
     result = await run_plan(grounded.plan, source, max_trials_per_cohort)
-    empty = tuple(
-        f"No trials matched {c.label or 'the question'}; check the spelling of its filters."
-        for c in result.cohorts
-        if c.matched == 0
-    )
-    return Answer(grounded.plan, grounded.interpretation, result, grounded.notes + empty)
+    return Answer(grounded.plan, grounded.interpretation, result, grounded.notes)

@@ -108,4 +108,5 @@ async def test_visualize_runs_the_grounded_plan() -> None:
 async def test_visualize_warns_about_cohorts_that_match_nothing() -> None:
     answer = await visualize(QUESTION, ScriptedPlanner(GOOD), FakeSource(total=0))
 
-    assert answer.notes == ("No trials matched Breast cancer; check the spelling of its filters.",)
+    assert answer.notes == ()  # said once, by run_plan
+    assert answer.result.notes == ("No trials match the filters for Breast cancer; check the spelling or try a broader term.",)
