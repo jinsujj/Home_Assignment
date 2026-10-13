@@ -164,7 +164,9 @@ cohorts) are rejected with `422` and an explanation; ClinicalTrials.gov failures
                    "exact_counts": false,   // see "Exact counts beyond the cap"
                    "names": ["pembrolizumab", "Pembrolizumab"] }, ... ],   // filter terms as registered
     "notes": [ "175 of 2974 trials in Pembrolizumab have no registered phase and are not shown.", ... ],
-    "data_version": "2026-10-09T09:00:05"  // the registry snapshot the answer was computed from
+    "data_version": "2026-10-09T09:00:05",  // the registry snapshot the answer was computed from
+    "note_citations": [ { "note": "175 of 2974 trials ... have no registered phase ...",   // notes that count
+                          "citations": { "total": 175, "items": [ ... ] } } ]           // trials, with them
   }
 }
 ```
@@ -219,12 +221,15 @@ Every row, node and edge carries `citations` (here the "Phase 3" bar for pembrol
         "excerpt": "phases: PHASE3; interventions.name: Pembrolizumab; briefTitle: Pembrolizumab (MK-3475) ...",
         "mentioned_only": [] }
     ],
-    "nct_ids": null } }
+    "nct_ids": null,
+    "registry_query": null } }
 ```
 
-`total` is the number of analyzed trials behind the datum; `items` spells out the first few
-(default 5). It is below `trial_count` when the counts come from the registry (see "Exact
-counts beyond the cap").
+`total` is the number of trials behind the datum that the citations cover; `items` spells out the
+first few (default 5). For a count made by the registry (see "Exact counts beyond the cap"),
+`total` covers the analyzed trials and `registry_query` is a ClinicalTrials.gov API request whose
+`totalCount` is the bar's `trial_count` and whose pages list those trials; with
+`all_citation_ids`, `nct_ids` lists them all and `total` equals `trial_count`.
 `evidence` names the field of the API's study JSON and the value exactly as registered that put
 the trial into this datum (two entries for an edge, one per endpoint; value and interval limits
 for a posted result), followed by why the trial is in the cohort: the registered value matching
@@ -233,7 +238,12 @@ is the same evidence as one line of text, the shape the assignment's example use
 (`citations[].{nct_id, excerpt}`). `nct_ids` lists every
 contributing trial when the request sets `all_citation_ids`, and is `null` otherwise.
 `notes` lists assumptions and caveats in plain sentences (multi-valued counting, missing
-values, top-N cut-offs, binning).
+values, top-N cut-offs, binning); a note that counts trials ("1069 of 5000 trials have no
+registered phase", "309 … have an estimated start date", "335 … mention 'pembrolizumab'", trials
+in two compared cohorts, trials without a measure) also appears in `meta.note_citations` with
+those trials, cited like a datum. Alternative views cite the same trials as the rows they redraw,
+so they refer to the primary chart's citations with a JSON reference instead of repeating them:
+`"citations": {"$ref": "#/visualization/data/3/citations"}` (or `.../data/edges/12/citations`).
 
 **Why a trial is in its cohort.** ClinicalTrials.gov's searches for an intervention, condition or
 sponsor also match other text, such as descriptions: 335 of the 2,974 trials found for
@@ -261,11 +271,11 @@ or at a line break, so "e.g. pembrolizumab", "etc." and "2.5 mg" do not end one;
 showed up on real records ("g pembrolizumab)") before that rule. The texts of all cited trials
 come in one request per 200 (`filter.ids`); without them, citations keep the registered values.
 
-Measured for pembrolizumab, a default phase chart is 54 KB, Keytruda vs Opdivo 123 KB and the
-drug network 2,081 KB, of which alternative views repeat about two thirds. Responses are gzipped
-for clients that accept it (browsers do): 4 KB, 16 KB and 132 KB. Full NCT ID lists are opt-in:
-with `all_citation_ids` the same answers are 147 KB, 353 KB and 2,312 KB (36, 91 and 186 KB
-gzipped).
+Measured for pembrolizumab, a default phase chart is 32 KB, Keytruda vs Opdivo 53 KB and the drug
+network 804 KB; before alternative views referred to the primary's citations, they were 54, 123
+and 2,081 KB. Responses are gzipped for clients that accept it (browsers do): 5 KB, 7 KB and
+65 KB. Full NCT ID lists are opt-in: with `all_citation_ids` the same answers are 85, 148 and
+915 KB (21, 37 and 99 KB gzipped).
 
 ## Key design decisions and trade-offs
 
@@ -530,8 +540,12 @@ showed Phase 2 at 1,362 instead of 4,590. For a `count_by` without a split over 
 study type, lead sponsor class or intervention type, `run_plan` now asks the registry how many
 of *all* matching trials register each category the analyzed trials show (one `countTotal`
 request each, the category added to the cohort's own criteria as an Essie `AREA[...]` clause).
-Bars show those counts, citations still come from the analyzed trials, and `meta.cohorts[]`
-says `exact_counts: true`. Before relying on it, the registry's count of every category (38
+Bars show those counts, citations still spell out analyzed trials, `meta.cohorts[]` says
+`exact_counts: true`, and each bar's `citations.registry_query` reproduces its count: for breast
+cancer, requesting it returns `totalCount` 4,590 for Phase 2, the bar's value. With
+`all_citation_ids`, every trial behind each count is listed (one request per 1,000; breast
+cancer's six phases list 14,200 trials in about 30 s; above 20,000 a note says so and
+`registry_query` remains the way to them). Before relying on it, the registry's count of every category (38
 over five dimensions) was compared with our own aggregation for all 4,269 Alzheimer's disease
 trials: all equal. A live test repeats the comparison on a smaller cohort (melanoma trials in
 South Korea).
@@ -559,7 +573,7 @@ Observed while probing the live API (v2.0.5); each is handled or noted:
 | A study lists one location per site (hundreds per study). | `Trial.countries` is de-duplicated: a trial counts once per country. |
 | Non-drug items are registered as interventions (e.g. "Laboratory Biomarker Analysis", type `OTHER`). | Drug networks use `DRUG` / `BIOLOGICAL` interventions only. |
 | Country filters resolve variants (`USA`, `UK`, `Korea, Republic of` match `United States`, `United Kingdom`, `South Korea`); stored values use one spelling (226 distinct). | No country normalisation needed for filtering; charts show the stored spelling. |
-| Not-yet-started trials carry anticipated start dates, including future years. | Time series note that recent and future years are provisional. |
+| Not-yet-started trials carry anticipated start dates, including future years (`startDateStruct.type: ESTIMATED`; 309 of 2,969 dated pembrolizumab trials). | Start and completion dates are cited with their registered type; time series say how many counted trials have an estimated start, in a note that cites them. |
 | `/stats/field/values` returns all 226 location countries but only the top 250 of ~134,000 conditions, ~537,000 intervention names and ~52,000 sponsors; the intervention top list is led by "Placebo", "Control", "No intervention", "Usual Care". | `GET /api/options` offers the full country list as a dropdown and the top terms (without such non-search terms, case duplicates merged) as suggestions; free text still works. |
 | Officials are often roles, departments or companies: in ~6,000 surveyed records, "Clinical Sciences & Operations" (239), "Teva Medical Expert, MD" (107), "Medical Director" (106), "Medical Monitor" (90), hotline texts, the sponsor's own name. | The ACL keeps only names that look like people (pattern list from that survey; the sponsor-name rule skips individual sponsors, who are often their own investigator). |
 | One person, several spellings: "Benoit Girard, MD" / "Benoit Girard, M.D."; "James D. Carlson, Pharm.D." in four forms. | Investigator nodes are keyed without credentials after the first comma, so surnames like "Do" or "Ma" are kept. |
@@ -596,7 +610,8 @@ fixed list (country dropdown with trial counts, phase and status chips, year sel
 suggested elsewhere (drug, condition, sponsor), from `GET /api/options`; active filters show as
 removable chips. For a single trial it shows the trial used, with links, and lets the user
 switch to another trial the name matched. Tabs above each chart switch between the answer's
-views (e.g. Bars / Map / Donut). Refusals and "no posted results" appear as neutral notices, not
+views (e.g. Bars / Map / Donut). Notes that count trials have a "show trials" link that lists
+them in the citation panel, and registry counts link to the API request that reproduces them. Refusals and "no posted results" appear as neutral notices, not
 errors, and replace the previous chart.
 
 Rendering knows nothing about questions: it maps `type` + `encoding` to Vega-Lite (bars with
@@ -656,9 +671,8 @@ uv provisions the interpreter locally and the Docker image is `python:3.14-slim`
 - The evaluation covers English questions; other languages are untested.
 - A trial name matching several trials with results is resolved to the largest; it is a rule,
   not knowledge of which is the "main" trial, so the alternatives are always shown.
-- Alternative views repeat their rows' citations, about two thirds of a response (the
-  pembrolizumab drug network: 1,351 of 2,081 KB; gzipped 132 KB in all). With more time: views
-  would reference the primary's rows.
+- Large networks remain the largest answers (804 KB for pembrolizumab's drug network, 65 KB
+  gzipped), mostly per-link citations with their passages.
 - Mention roles are an LLM's reading of up to six passages and the title; on borderline records
   (patients "scheduled to receive" a drug in an observational study) runs disagree. The quote
   shown with each role lets the reader check it.
