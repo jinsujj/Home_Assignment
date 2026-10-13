@@ -255,3 +255,19 @@ async def test_mention_only_trials_are_listed_page_by_page_up_to_a_limit() -> No
     assert await source.mentioned_only(CRITERIA, "intervention", limit=2) is None  # more than the limit
     assert await source.mentioned_only(CRITERIA, "condition", limit=3) == frozenset()  # no condition filter
     assert len(requests) == 3
+
+
+async def test_texts_of_cited_trials_are_fetched_by_id_in_chunks() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        ids = request.url.params["filter.ids"].split(",")
+        studies = [{"protocolSection": {"identificationModule": {"nctId": i, "briefTitle": f"Title {i}"}}} for i in ids]
+        return httpx.Response(200, json={"studies": studies})
+
+    ids = [f"NCT{i:08d}" for i in range(250)]
+    texts = await _source(handler).trial_texts(ids)
+
+    assert [len(r.url.params["filter.ids"].split(",")) for r in requests] == [200, 50]
+    assert texts["NCT00000007"] == {"protocolSection.identificationModule.briefTitle": ("Title NCT00000007",)}

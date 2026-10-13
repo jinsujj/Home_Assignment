@@ -1,4 +1,4 @@
-import type { SearchOptions, VisualizationResponse } from './types'
+import type { MentionVerdict, SearchOptions, VisualizationResponse } from './types'
 
 /** `code` is set for answers that explain why there is no chart (refusals, unknown trials). */
 export class ApiError extends Error {
@@ -22,6 +22,19 @@ export const runPlan = (request: unknown, signal?: AbortSignal) => post('/api/pl
 export async function getOptions(signal?: AbortSignal): Promise<SearchOptions> {
   const response = await fetch('/api/options', { signal })
   if (response.ok) return response.json()
+  const [message] = await describeError(response)
+  throw new ApiError(message)
+}
+
+/** POST /api/mentions: a language model judges why trials mention the filtered entity. */
+export async function judgeMentions(nctIds: string[], names: string[], signal?: AbortSignal): Promise<MentionVerdict[]> {
+  const response = await fetch('/api/mentions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ nct_ids: nctIds, names }),
+    signal,
+  })
+  if (response.ok) return (await response.json()).verdicts
   const [message] = await describeError(response)
   throw new ApiError(message)
 }

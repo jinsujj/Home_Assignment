@@ -31,6 +31,9 @@ class FakeSource:
     async def mentioned_only(self, criteria, criterion, limit):
         return frozenset(self.mentioned)
 
+    async def trial_texts(self, nct_ids):
+        return {}
+
     async def search(self, criteria: TrialFilter, max_trials: int, *, include_sites: bool = False) -> TrialSearchResult:
         self.calls.append((criteria, max_trials, include_sites))
         if self.error:
@@ -97,7 +100,7 @@ async def test_runs_a_plan_and_returns_spec_with_citations_and_meta() -> None:
     assert meta["source"] == "clinicaltrials.gov"
     assert meta["plan"]["cohorts"][0]["filter"]["intervention"] == "pembrolizumab"
     assert meta["cohorts"] == [
-        {"label": "Pembrolizumab", "matched": 40, "analyzed": 2, "truncated": True, "exact_counts": False}
+        {"label": "Pembrolizumab", "matched": 40, "analyzed": 2, "truncated": True, "exact_counts": False, "names": ["pembrolizumab"]}
     ]
     assert "1 of 2 trials have no registered phase and are not shown." in meta["notes"]
     assert any(n.startswith("Analyzed the first 2 of 40") for n in meta["notes"])
@@ -376,7 +379,7 @@ async def test_cohorts_say_when_counts_cover_every_matching_trial() -> None:
     body = (await client_for(source).post("/api/plans", json={"plan": plan, "max_trials_per_cohort": 1})).json()
 
     assert body["meta"]["cohorts"] == [
-        {"label": "Pembrolizumab", "matched": 40, "analyzed": 1, "truncated": True, "exact_counts": True}
+        {"label": "Pembrolizumab", "matched": 40, "analyzed": 1, "truncated": True, "exact_counts": True, "names": ["pembrolizumab"]}
     ]
     assert [(r["trial_count"], r["citations"]["total"]) for r in body["visualization"]["data"]] == [(31, 1)]
 
@@ -400,3 +403,50 @@ async def test_citations_say_which_trials_only_mention_the_filtered_drug() -> No
     registered, mentioned = body["visualization"]["data"][0]["citations"]["items"]
     assert registered["excerpt"] == "phases: PHASE2; interventions.name: Pembrolizumab"
     assert (registered["mentioned_only"], mentioned["mentioned_only"]) == ([], ["pembrolizumab"])
+
+
+async def test_large_answers_are_compressed_for_clients_that_accept_it() -> None:
+    trials = [trial(f"NCT{i}", phases=(Phase.PHASE2,)) for i in range(50)]
+    plan = {"kind": "count_by", "cohorts": [PEMBRO], "dimension": "phase"}
+
+    response = await client_for(FakeSource(trials)).post("/api/plans", json={"plan": plan}, headers={"Accept-Encoding": "gzip"})
+
+    assert response.headers["content-encoding"] == "gzip"
+    assert response.json()["visualization"]["data"][0]["trial_count"] == 50
+
+
+class FakeJudge:
+    def __init__(self, answers) -> None:
+        self.answers, self.cases = answers, []
+
+    async def judge(self, cases):
+        self.cases += cases
+        return self.answers
+
+
+ELIGIBILITY = "protocolSection.eligibilityModule.eligibilityCriteria"
+
+
+class TextSource(FakeSource):
+    async def trial_texts(self, nct_ids):
+        return {"NCT00000001": {ELIGIBILITY: ("* Prior treatment with pembrolizumab is not allowed.",)}}
+
+
+async def test_mentions_are_judged_with_a_quote_from_the_record() -> None:
+    client = client_for(TextSource())
+    client._transport.app.state.mention_judge = FakeJudge({"NCT00000001": ("eligibility", "Prior treatment with pembrolizumab")})
+
+    response = await client.post("/api/mentions", json={"nct_ids": ["NCT00000001", "NCT00000002"], "names": ["pembrolizumab"]})
+
+    assert response.status_code == 200
+    assert response.json()["verdicts"] == [
+        {"nct_id": "NCT00000001", "role": "eligibility", "passages": 1,
+         "quote": {"field": ELIGIBILITY, "value": "* Prior treatment with pembrolizumab is not allowed."}},
+        {"nct_id": "NCT00000002", "role": "unclear", "passages": 0, "quote": None},
+    ]
+
+
+async def test_mentions_need_a_language_model() -> None:
+    response = await client_for(FakeSource()).post("/api/mentions", json={"nct_ids": ["NCT00000001"], "names": ["x"]})
+
+    assert response.status_code == 503

@@ -6,7 +6,7 @@ from typing import Any
 
 import httpx
 
-from cheiron.adapters.outbound.ctgov.mapper import FIELDS, SITE_FIELDS, to_trial
+from cheiron.adapters.outbound.ctgov.mapper import FIELDS, SITE_FIELDS, TEXT_FIELDS, to_texts, to_trial
 from cheiron.adapters.outbound.ctgov.params import (
     COUNTABLE_AREAS,
     category_params,
@@ -28,6 +28,7 @@ from cheiron.domain.trial_filter import TrialFilter
 
 BASE_URL = "https://clinicaltrials.gov/api/v2"
 MAX_PAGE_SIZE = 1000  # the API coerces larger values down to this
+TEXTS_PER_REQUEST = 200  # NCT IDs in one filter.ids query string (~2.6 KB)
 _VOCABULARY_PIECES = {
     Vocabulary.COUNTRY: "LocationCountry",  # all 226 values are returned
     Vocabulary.CONDITION: "Condition",  # top 250 of ~134,000
@@ -93,6 +94,14 @@ class CtGovTrialSource:
             page = await self._get({**base, "pageToken": token})
             ids += [s["protocolSection"]["identificationModule"]["nctId"] for s in page.get("studies", [])]
         return frozenset(ids)
+
+    async def trial_texts(self, nct_ids: Sequence[str]) -> dict[str, dict[str, tuple[str, ...]]]:
+        texts = {}
+        for start in range(0, len(nct_ids), TEXTS_PER_REQUEST):
+            chunk = nct_ids[start : start + TEXTS_PER_REQUEST]
+            page = await self._get({"filter.ids": ",".join(chunk), "fields": ",".join(TEXT_FIELDS), "pageSize": str(len(chunk))})
+            texts.update(to_texts(study) for study in page.get("studies", []))
+        return texts
 
     async def data_version(self) -> str:
         """Timestamp of the data snapshot being served; it changes when new data is published

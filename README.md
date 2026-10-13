@@ -30,9 +30,10 @@ cp .env.example .env   # then set OPENAI_API_KEY
 
 | Variable | Required | Used for |
 |---|---|---|
-| `OPENAI_API_KEY` | for `/api/visualize` | the LLM planner; `/api/plans` works without it |
+| `OPENAI_API_KEY` | for `/api/visualize`, `/api/mentions` | the LLM planner and mention judge; `/api/plans` works without it |
 | `OPENAI_MODEL` | no | planner model, default `gpt-5.4-mini` |
 | `OPENAI_REASONING_EFFORT` | no | default `low`; set empty for non-reasoning models such as `gpt-4.1-mini` |
+| `OPENAI_MENTION_REASONING_EFFORT` | no | the same for the mention judge, default `high` |
 
 `.env` is git-ignored; `.env.example` lists the variables and the allowed models.
 
@@ -61,7 +62,7 @@ cd frontend && npm install && npm run dev       # UI on :5173, proxies /api to :
 cd backend
 uv run pytest            # offline: unit tests, recorded API fixtures, HTTP tests with a fake source
 uv run pytest -m live    # contract checks and cross-checks against the real ClinicalTrials.gov API
-uv run --env-file ../.env pytest -m llm   # planner evaluation against the real model (19 cases)
+uv run --env-file ../.env pytest -m llm   # planner (19 cases) and mention judge (13) against the real model
 cd ../frontend && npm run build && npm run lint   # type-check, build, lint
 ```
 
@@ -73,6 +74,7 @@ cd ../frontend && npm run build && npm run lint   # type-check, build, lint
 | `POST /api/plans` | Run a structured analysis plan directly, without the LLM. |
 | `GET /api/options` | Choices for building filters: every registry country (exact spelling, trial count), common conditions/interventions/sponsors as suggestions, phase and status codes. Cached 6 h. |
 | `GET /api/version` | `{"data_version": "2026-10-09T09:00:05"}`: the registry data snapshot being served (ClinicalTrials.gov's `/version` `dataTimestamp`, checked at most every 10 minutes). |
+| `POST /api/mentions` | `{"nct_ids": [...], "names": [...]}` → what the named entity is to each trial (studied, given alongside, eligibility, background, unclear), judged by the LLM and quoting the record. See [Why a trial mentions a term](#ai-design-why-a-trial-mentions-a-term). |
 | `GET /api/health` | Liveness. |
 | `GET /api/docs` | OpenAPI documentation generated from the Pydantic models. |
 
@@ -159,7 +161,8 @@ cohorts) are rejected with `422` and an explanation; ClinicalTrials.gov failures
     "interpretation": "Compare trial phases for Keytruda versus Opdivo.",   // /api/visualize only
     "plan": { ... },                       // the analysis that ran, with every filter applied
     "cohorts": [ { "label": "Pembrolizumab", "matched": 2974, "analyzed": 2974, "truncated": false,
-                   "exact_counts": false }, ... ],   // exact_counts: see "Exact counts beyond the cap"
+                   "exact_counts": false,   // see "Exact counts beyond the cap"
+                   "names": ["pembrolizumab", "Pembrolizumab"] }, ... ],   // filter terms as registered
     "notes": [ "175 of 2974 trials in Pembrolizumab have no registered phase and are not shown.", ... ],
     "data_version": "2026-10-09T09:00:05"  // the registry snapshot the answer was computed from
   }
@@ -210,8 +213,10 @@ Every row, node and edge carries `citations` (here the "Phase 3" bar for pembrol
         "url": "https://clinicaltrials.gov/study/NCT04003636",
         "evidence": [ { "field": "protocolSection.designModule.phases", "value": "PHASE3" },
                       { "field": "protocolSection.armsInterventionsModule.interventions.name",
-                        "value": "Pembrolizumab" } ],
-        "excerpt": "phases: PHASE3; interventions.name: Pembrolizumab",
+                        "value": "Pembrolizumab" },
+                      { "field": "protocolSection.identificationModule.briefTitle",
+                        "value": "Pembrolizumab (MK-3475) Plus Gemcitabine/Cisplatin Versus Placebo ..." } ],
+        "excerpt": "phases: PHASE3; interventions.name: Pembrolizumab; briefTitle: Pembrolizumab (MK-3475) ...",
         "mentioned_only": [] }
     ],
     "nct_ids": null } }
@@ -222,8 +227,9 @@ Every row, node and edge carries `citations` (here the "Phase 3" bar for pembrol
 counts beyond the cap").
 `evidence` names the field of the API's study JSON and the value exactly as registered that put
 the trial into this datum (two entries for an edge, one per endpoint; value and interval limits
-for a posted result), followed by why the trial is in the cohort (see below); `excerpt` is the
-same evidence as one line of text, the shape the assignment's example uses
+for a posted result), followed by why the trial is in the cohort: the registered value matching
+the cohort's filter and the passage of the trial's own text that names it (see below); `excerpt`
+is the same evidence as one line of text, the shape the assignment's example uses
 (`citations[].{nct_id, excerpt}`). `nct_ids` lists every
 contributing trial when the request sets `all_citation_ids`, and is `null` otherwise.
 `notes` lists assumptions and caveats in plain sentences (multi-valued counting, missing
@@ -240,11 +246,26 @@ the registered fields; the registry's synonyms count as registered: "Keytruda", 
 cites "Pembrolizumab"); trials that only mention it list the term in `mentioned_only`, are cited
 last, and `meta.notes` says how many there are. A live test checks, for every phase 3
 pembrolizumab trial, that the registry's verdict agrees with the registered drug names. This
-costs one request per free-text filter, plus one per 1,000 such trials.
+costs one request per free-text filter, plus one per 1,000 such trials. For conditions the
+verdict over-flags: a narrower registered name ("Lung Adenocarcinoma", "NSCLC Stage IV") does not
+match "lung cancer", so some flagged trials do study it; the LLM check below tells them apart.
 
-Full lists are opt-in because of size, measured for pembrolizumab: the phase chart grows from
-21 KB to 114 KB (each alternative view repeats its lists) and the drug network from 1,037 KB
-to 1,268 KB. `excerpt` itself adds 9% (bar chart) to 17% (network) to a default response.
+**The text that names it.** Each cited trial (the spelled-out `items`, not all contributing
+trials) also quotes the passage of its own text that names the filtered entity, by its filter
+term or registered name: from the title, official title, summary, arm and intervention
+descriptions, detailed description, keywords or eligibility criteria, in that order, as titles
+and summaries describe the trial while eligibility criteria often name other treatments. A
+passage is the sentence or line around the name, at most 240 characters, cut at word
+boundaries, and always an exact substring of the record. Sentences end at ". " before a capital
+or at a line break, so "e.g. pembrolizumab", "etc." and "2.5 mg" do not end one; both mistakes
+showed up on real records ("g pembrolizumab)") before that rule. The texts of all cited trials
+come in one request per 200 (`filter.ids`); without them, citations keep the registered values.
+
+Measured for pembrolizumab, a default phase chart is 54 KB, Keytruda vs Opdivo 123 KB and the
+drug network 2,081 KB, of which alternative views repeat about two thirds. Responses are gzipped
+for clients that accept it (browsers do): 4 KB, 16 KB and 132 KB. Full NCT ID lists are opt-in:
+with `all_citation_ids` the same answers are 147 KB, 353 KB and 2,312 KB (36, 91 and 186 KB
+gzipped).
 
 ## Key design decisions and trade-offs
 
@@ -303,6 +324,40 @@ asserts the exact filters, so an added filter fails it, and refusals assert thei
 |---|---|---|
 | `gpt-5.4-mini`, reasoning `low` (default) | 17/17 twice on the first suite; 19/19 on the current one | ~1.5–2.2 s |
 | `gpt-4.1-mini` | 16/17 on the first suite (Keytruda vs Opdivo failed once, passed 3/3 on rerun) | ~1.8–4.8 s |
+
+### AI design: why a trial mentions a term
+
+That a trial only mentions a drug does not say why: the 335 pembrolizumab "mentions" include a
+fecal-transplant study given alongside standard pembrolizumab, trials requiring prior
+pembrolizumab, and studies whose patients receive it as usual care. Telling these apart needs
+reading, so `POST /api/mentions` (the "Ask AI" button of the demo's citation panel) gives the
+LLM, per trial, its title and every passage naming the entity (at most 6), and asks for one
+role: `studied`, `given_alongside`, `eligibility`, `background` or `unclear`, defined for drugs,
+conditions and organisations.
+
+The grounding rule of the planner applies: each verdict must quote the title or a passage, and
+`application/mentions.py` keeps it only if the quote (at least three words, ignoring spacing,
+case and markdown escapes) is found there; the response carries that passage verbatim, and an
+unfound quote turns the role into `unclear`. It runs on demand for the cited trials of one datum
+(at most 10 per request), never for whole cohorts or chart numbers, and verdicts are cached per
+trial and passages (`CachingMentionJudge`).
+
+Evaluation (`tests/llm/test_mention_eval.py`, 13 records read by hand: 8 for pembrolizumab,
+5 for breast or lung cancer, including trials that register "Lung Adenocarcinoma" and are
+flagged as mention-only). Building it found three bugs in our own code, not the model's: the
+sentence cutter stopped at "e.g." ("g pembrolizumab)"), the verifier rejected quotes that copied
+the section label shown before a passage or quoted the title, and the role definitions only
+fitted drugs, so every breast cancer trial came back `background`. After fixing them, with
+`gpt-5.4-mini`, three runs each:
+
+| Reasoning effort | Right | 13 trials in |
+|---|---|---|
+| `low` | 13, 12, 12 of 13 | 11–13 s |
+| `high` (default, `OPENAI_MENTION_REASONING_EFFORT`) | 12, 11, 12 of 13 | 35–93 s |
+
+Higher effort did not help: the misses are borderline readings (an observational study of
+patients "scheduled to receive" the drug), and it quoted titles and labels more often. `high`
+is the configured default by choice; `low` is as accurate here and several times faster.
 
 ### One grammar for every question: `AnalysisPlan`
 
@@ -601,9 +656,12 @@ uv provisions the interpreter locally and the Docker image is `python:3.14-slim`
 - The evaluation covers English questions; other languages are untested.
 - A trial name matching several trials with results is resolved to the largest; it is a rule,
   not knowledge of which is the "main" trial, so the alternatives are always shown.
-- Alternative views repeat their rows' citations, so responses grow by about half to two
-  thirds (grouped bars 59 KB, of which 39 KB alternatives; a melanoma sponsor–drug network
-  428 KB, of which 205 KB). With more time: views would reference the primary's rows.
+- Alternative views repeat their rows' citations, about two thirds of a response (the
+  pembrolizumab drug network: 1,351 of 2,081 KB; gzipped 132 KB in all). With more time: views
+  would reference the primary's rows.
+- Mention roles are an LLM's reading of up to six passages and the title; on borderline records
+  (patients "scheduled to receive" a drug in an observational study) runs disagree. The quote
+  shown with each role lets the reader check it.
 - The map shows the countries of the bar chart (the top 15 by default), not every country.
 - Clusters are computed on the displayed subgraph (top 30 nodes by default) and modularity is
   modest (Q ≈ 0.2 on the examples): clusters are tendencies, not hard partitions. Name variants
@@ -668,6 +726,7 @@ backend/
       visualization.py               output spec: chart types, channels, citations
       charts/views.py                alternative views derived from a primary chart's rows
       charts/communities.py          greedy modularity clustering for networks
+      membership.py                  why a trial is in its cohort: registered values, quoted passages
       geography.py, country_codes.json   registry country names -> ISO 3166-1 numeric codes
       results.py                     a trial's posted outcome measures and adverse events
     application/
@@ -677,11 +736,13 @@ backend/
       options.py                     filter choices from the registry vocabulary, cached
       trial_lookup.py                which trial a name refers to (rules and alternatives)
       visualize.py                   use case: plan with one correction round, then run_plan
+      mentions.py                    use case: an LLM judges why trials mention a term, quotes verified
     adapters/
       inbound/http/                  FastAPI routes and Pydantic schemas
       outbound/openai_planner.py     QueryPlanner on OpenAI structured outputs, planner instructions
+      outbound/openai_mentions.py    MentionJudge on OpenAI structured outputs
       outbound/ctgov/                ClinicalTrials.gov client, query params, ACL mappers (studies, results)
-      outbound/caching.py            decorators: registry data keyed to the data snapshot; planner drafts
+      outbound/caching.py            decorators: registry data keyed to the data snapshot; plans; verdicts
     main.py                        composition root
   tests/                           unit, HTTP, cache and planner tests; recorded fixtures;
                                    live API checks (-m live); planner evaluation (-m llm)

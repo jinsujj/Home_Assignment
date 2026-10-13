@@ -27,8 +27,10 @@ export function VegaChart({ visualization, onSelect }: Props) {
         const parts = [...new Set(named)].map((field) => datum[field]).concat(datum._range)
         onSelect({
           label: parts.filter((p) => p != null && p !== '').join(' · ') || String(datum.title ?? ''),
-          count: datum.citations.total,
+          // trial_count may cover more trials than are cited (registry counts beyond the cap)
+          count: Number(datum.trial_count ?? datum.citations.total),
           citations: datum.citations,
+          cohort: typeof datum.cohort === 'string' ? datum.cohort : undefined,
         })
       })
     })

@@ -10,7 +10,17 @@ import re
 from enum import StrEnum
 from typing import Any
 
-from cheiron.domain.facets import CREDENTIALS
+from cheiron.domain.facets import (
+    ARM_GROUP_DESCRIPTION,
+    BRIEF_SUMMARY,
+    BRIEF_TITLE,
+    CREDENTIALS,
+    DETAILED_DESCRIPTION,
+    ELIGIBILITY_CRITERIA,
+    INTERVENTION_DESCRIPTION,
+    KEYWORDS,
+    OFFICIAL_TITLE,
+)
 from cheiron.domain.trial import (
     Intervention,
     InterventionType,
@@ -22,6 +32,19 @@ from cheiron.domain.trial import (
     Status,
     StudyType,
     Trial,
+)
+
+# Free text for citing mentions (to_texts); a few KB per trial, so fetched only for cited trials.
+TEXT_FIELDS = (
+    "NCTId",
+    "BriefTitle",
+    "OfficialTitle",
+    "BriefSummary",
+    "DetailedDescription",
+    "ArmGroupDescription",
+    "InterventionDescription",
+    "Keyword",
+    "EligibilityCriteria",
 )
 
 # Piece names requested via the `fields` parameter; keep in sync with to_trial().
@@ -65,6 +88,26 @@ _PLACEHOLDER_SITE = re.compile(
     r"|^local institution\b|^for additional information|\d{3}\)?[-\s]\d{3}",
     re.IGNORECASE,
 )
+
+
+def to_texts(study: dict[str, Any]) -> tuple[str, dict[str, tuple[str, ...]]]:
+    """NCT ID and the study's free text by field path (see TEXT_FIELDS); empty fields left out."""
+    protocol = study.get("protocolSection", {})
+    identification = protocol.get("identificationModule", {})
+    description = protocol.get("descriptionModule", {})
+    arms = protocol.get("armsInterventionsModule", {})
+    texts = {
+        BRIEF_TITLE: (identification.get("briefTitle"),),
+        OFFICIAL_TITLE: (identification.get("officialTitle"),),
+        BRIEF_SUMMARY: (description.get("briefSummary"),),
+        DETAILED_DESCRIPTION: (description.get("detailedDescription"),),
+        ARM_GROUP_DESCRIPTION: tuple(a.get("description") for a in arms.get("armGroups", [])),
+        INTERVENTION_DESCRIPTION: tuple(i.get("description") for i in arms.get("interventions", [])),
+        KEYWORDS: tuple(protocol.get("conditionsModule", {}).get("keywords", [])),
+        ELIGIBILITY_CRITERIA: (protocol.get("eligibilityModule", {}).get("eligibilityCriteria"),),
+    }
+    present = {field: tuple(t for t in values if t) for field, values in texts.items()}
+    return identification.get("nctId", ""), {field: values for field, values in present.items() if values}
 
 
 def to_trial(study: dict[str, Any]) -> Trial:

@@ -27,6 +27,15 @@ COLLABORATOR_NAME = "protocolSection.sponsorCollaboratorsModule.collaborators.na
 LOCATION_COUNTRY = "protocolSection.contactsLocationsModule.locations.country"
 LOCATION_FACILITY = "protocolSection.contactsLocationsModule.locations.facility"
 OVERALL_OFFICIAL_NAME = "protocolSection.contactsLocationsModule.overallOfficials.name"
+# Free text, fetched only for cited trials (domain.membership)
+BRIEF_TITLE = "protocolSection.identificationModule.briefTitle"
+OFFICIAL_TITLE = "protocolSection.identificationModule.officialTitle"
+BRIEF_SUMMARY = "protocolSection.descriptionModule.briefSummary"
+DETAILED_DESCRIPTION = "protocolSection.descriptionModule.detailedDescription"
+ARM_GROUP_DESCRIPTION = "protocolSection.armsInterventionsModule.armGroups.description"
+INTERVENTION_DESCRIPTION = "protocolSection.armsInterventionsModule.interventions.description"
+KEYWORDS = "protocolSection.conditionsModule.keywords"
+ELIGIBILITY_CRITERIA = "protocolSection.eligibilityModule.eligibilityCriteria"
 
 DRUG_TYPES = frozenset({InterventionType.DRUG, InterventionType.BIOLOGICAL})
 

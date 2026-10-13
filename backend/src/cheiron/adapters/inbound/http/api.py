@@ -5,12 +5,22 @@ from contextlib import AbstractAsyncContextManager
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 
-from cheiron.adapters.inbound.http.schemas import PlanRequest, VisualizationResponse, VisualizeRequest, plan_from_domain
+from cheiron.adapters.inbound.http.schemas import (
+    MentionsRequest,
+    MentionsResponse,
+    MentionVerdictOut,
+    PlanRequest,
+    VisualizationResponse,
+    VisualizeRequest,
+    plan_from_domain,
+)
 from cheiron.application.options import SearchOptions, SearchOptionsProvider
 from cheiron.application.planning import UnsupportedQuestion
-from cheiron.application.ports import PlannerError, QueryPlanner, Registry, TrialSourceError
+from cheiron.application.mentions import explain_mentions
+from cheiron.application.ports import MentionJudge, MentionJudgeError, PlannerError, QueryPlanner, Registry, TrialSourceError
 from cheiron.application.run_plan import run_plan
 from cheiron.application.trial_lookup import NoPostedResults, TrialNotFound
 from cheiron.application.visualize import PlanningFailed, visualize
@@ -28,6 +38,13 @@ def query_planner(request: Request) -> QueryPlanner:
     if planner is None:
         raise HTTPException(503, "Natural-language questions need OPENAI_API_KEY; POST /api/plans works without it.")
     return planner
+
+
+def mention_judge(request: Request) -> MentionJudge:
+    judge = getattr(request.app.state, "mention_judge", None)
+    if judge is None:
+        raise HTTPException(503, "Judging mentions needs OPENAI_API_KEY.")
+    return judge
 
 
 def options_provider(request: Request) -> SearchOptionsProvider:
@@ -100,6 +117,26 @@ async def run_structured_plan(
     return VisualizationResponse.of(body.plan, result, all_citation_ids=body.all_citation_ids)
 
 
+@router.post(
+    "/mentions",
+    summary="Judge why trials mention a filtered entity",
+    description="For trials whose citations list a term under `mentioned_only` (or any others), a language model "
+    "reads the passages of each record that name the entity and says what it is to the trial: studied, given "
+    "alongside, eligibility, background or unclear. Every verdict quotes the record; a quote not found there makes "
+    "the role `unclear`.",
+    responses={503: {"description": "The language model is not configured or unavailable."}},
+)
+async def judge_mentions(
+    body: MentionsRequest,
+    source: Annotated[Registry, Depends(trial_source)],
+    judge: Annotated[MentionJudge, Depends(mention_judge)],
+) -> MentionsResponse:
+    verdicts = await explain_mentions(body.nct_ids, body.names, source, judge)
+    return MentionsResponse(
+        verdicts=[MentionVerdictOut(nct_id=v.nct_id, role=v.role, quote=v.quote, passages=v.passages) for v in verdicts]
+    )
+
+
 def create_app(lifespan: Callable[[FastAPI], AbstractAsyncContextManager[None]] | None = None) -> FastAPI:
     app = FastAPI(
         title="Cheiron",
@@ -111,6 +148,8 @@ def create_app(lifespan: Callable[[FastAPI], AbstractAsyncContextManager[None]] 
         redoc_url=None,
     )
     app.include_router(router)
+    # Citations repeat titles and passages across rows and views: a drug network shrinks ~10x.
+    app.add_middleware(GZipMiddleware, minimum_size=1000)
 
     @app.exception_handler(TrialSourceError)
     async def upstream_failed(_: Request, exc: TrialSourceError) -> JSONResponse:
@@ -118,6 +157,10 @@ def create_app(lifespan: Callable[[FastAPI], AbstractAsyncContextManager[None]] 
 
     @app.exception_handler(PlannerError)
     async def planner_failed(_: Request, exc: PlannerError) -> JSONResponse:
+        return JSONResponse(status_code=503, content={"detail": str(exc)})
+
+    @app.exception_handler(MentionJudgeError)
+    async def judge_failed(_: Request, exc: MentionJudgeError) -> JSONResponse:
         return JSONResponse(status_code=503, content={"detail": str(exc)})
 
     @app.exception_handler(UnsupportedQuestion)

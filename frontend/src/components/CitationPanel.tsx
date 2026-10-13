@@ -1,10 +1,43 @@
-import type { Selection } from '../api/types'
+import { useState } from 'react'
+import { judgeMentions } from '../api/client'
+import type { MentionRole, MentionVerdict, Selection } from '../api/types'
 
-export function CitationPanel({ selection }: { selection: Selection | null }) {
+const ROLES: Record<MentionRole, string> = {
+  studied: 'studied by the trial',
+  given_alongside: 'given alongside what the trial tests',
+  eligibility: 'an eligibility condition',
+  background: 'background only',
+  unclear: 'unclear',
+}
+
+interface Props {
+  selection: Selection | null
+  /** What the cohort's filtered entity is called; empty when the cohort has no text filter. */
+  names: string[]
+}
+
+export function CitationPanel({ selection, names }: Props) {
+  const [verdicts, setVerdicts] = useState<Record<string, MentionVerdict> | null>(null)
+  const [judging, setJudging] = useState(false)
+  const [problem, setProblem] = useState<string | null>(null)
+
   if (!selection) {
     return <p className="hint">Click a bar, point, node or link to see the trials behind it.</p>
   }
   const { label, count, citations } = selection
+
+  const judge = () => {
+    setJudging(true)
+    setProblem(null)
+    judgeMentions(
+      citations.items.map((c) => c.nct_id),
+      names,
+    )
+      .then((found) => setVerdicts(Object.fromEntries(found.map((v) => [v.nct_id, v]))))
+      .catch((e: unknown) => setProblem(e instanceof Error ? e.message : String(e)))
+      .finally(() => setJudging(false))
+  }
+
   return (
     <div>
       <h3>
@@ -15,6 +48,18 @@ export function CitationPanel({ selection }: { selection: Selection | null }) {
           Showing {citations.items.length} of {citations.total.toLocaleString()} cited trials
           {citations.total < count && ' (the analyzed ones; the count covers every matching trial)'}.
         </p>
+      )}
+      {names.length > 0 && citations.items.length > 0 && !verdicts && (
+        <p>
+          <button type="button" className="secondary small" onClick={judge} disabled={judging}>
+            {judging && <span className="spinner" aria-hidden="true" />}
+            Ask AI what {names[0]} is to these trials
+          </button>
+          {problem && <span className="muted"> {problem}</span>}
+        </p>
+      )}
+      {verdicts && (
+        <p className="muted">Roles are a language model's reading; each quote was found in the trial's record.</p>
       )}
       <ul className="citations">
         {citations.items.map((c) => (
@@ -34,6 +79,17 @@ export function CitationPanel({ selection }: { selection: Selection | null }) {
                   mentions <q>{term}</q> only in its text; not registered as such
                 </li>
               ))}
+              {verdicts?.[c.nct_id] && (
+                <li className={`verdict ${verdicts[c.nct_id].role}`}>
+                  AI: {names[0]} is {ROLES[verdicts[c.nct_id].role]}
+                  {verdicts[c.nct_id].quote && (
+                    <>
+                      {' '}
+                      — <q>{verdicts[c.nct_id].quote!.value}</q>
+                    </>
+                  )}
+                </li>
+              )}
             </ul>
           </li>
         ))}

@@ -1,4 +1,4 @@
-from cheiron.adapters.outbound.ctgov.mapper import to_trial
+from cheiron.adapters.outbound.ctgov.mapper import to_texts, to_trial
 from cheiron.domain.trial import (
     Intervention,
     InterventionType,
@@ -154,3 +154,22 @@ def test_sites_are_distinct_by_facility_city_and_country_without_placeholders() 
         Site("University Hospital", "Zurich", "Switzerland"),
     )
     assert trial.countries[:3] == ("United States", "Switzerland", "South Korea")
+
+
+def test_free_text_is_kept_by_field_path_without_empty_fields() -> None:
+    study = {
+        "protocolSection": {
+            "identificationModule": {"nctId": "NCT1", "briefTitle": "Short", "officialTitle": ""},
+            "armsInterventionsModule": {"armGroups": [{"description": "Arm A gets pembrolizumab."}, {}]},
+            "eligibilityModule": {"eligibilityCriteria": "* Adults"},
+        }
+    }
+
+    assert to_texts(study) == (
+        "NCT1",
+        {
+            "protocolSection.identificationModule.briefTitle": ("Short",),
+            "protocolSection.armsInterventionsModule.armGroups.description": ("Arm A gets pembrolizumab.",),
+            "protocolSection.eligibilityModule.eligibilityCriteria": ("* Adults",),
+        },
+    )

@@ -7,9 +7,11 @@ from typing import Literal, Protocol
 
 from cheiron.application.planning import PlanDraft, Question
 from cheiron.domain.analysis import Dimension
+from cheiron.domain.membership import MentionRole
 from cheiron.domain.results import PostedResults
 from cheiron.domain.trial import Trial
 from cheiron.domain.trial_filter import TrialFilter
+from cheiron.domain.visualization import Evidence
 
 
 @dataclass(frozen=True)
@@ -48,6 +50,11 @@ class TrialSource(Protocol):
         through other text, such as a description. None when there are more than `limit`."""
         ...
 
+    async def trial_texts(self, nct_ids: Sequence[str]) -> dict[str, dict[str, tuple[str, ...]]]:
+        """Free text of each trial (titles, summary, descriptions, keywords, eligibility criteria),
+        by NCT ID and field path; trials not found are left out."""
+        ...
+
     async def data_version(self) -> str | None:
         """Timestamp of the registry data snapshot being served; None when unknown."""
         ...
@@ -60,6 +67,27 @@ class PlannerError(Exception):
 class QueryPlanner(Protocol):
     async def draft(self, question: Question, feedback: Sequence[str] = ()) -> PlanDraft:
         """Draft a plan for `question`. `feedback` explains why a previous draft was rejected."""
+        ...
+
+
+@dataclass(frozen=True)
+class MentionCase:
+    """A trial and the passages of its text that name the entity whose role is judged."""
+
+    nct_id: str
+    names: tuple[str, ...]
+    passages: tuple[Evidence, ...]
+    title: str = ""
+    """What the trial is about: passages alone often do not say what it tests."""
+
+
+class MentionJudgeError(Exception):
+    """The language model could not judge the mentions."""
+
+
+class MentionJudge(Protocol):
+    async def judge(self, cases: Sequence[MentionCase]) -> dict[str, tuple[MentionRole, str]]:
+        """Per NCT ID: the entity's role in the trial and the words quoted from the case's passages."""
         ...
 
 

@@ -556,3 +556,20 @@ pre {
 .citations .mentioned {
   color: #a15c00;
 }
+
+.citations .verdict {
+  color: var(--text);
+}
+
+.citations .verdict.studied {
+  color: #1e7a4f;
+}
+
+.citations .verdict.unclear {
+  color: var(--muted);
+}
+
+button.secondary.small {
+  padding: 4px 10px;
+  font-size: 12px;
+}

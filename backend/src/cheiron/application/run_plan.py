@@ -11,7 +11,14 @@ from cheiron.domain.charts import DEFAULT_MAX_CITATIONS, build_visualization
 from cheiron.domain.charts.trial_results import build_trial_results
 from cheiron.domain.charts.views import alternative_views
 from cheiron.domain.facets import dimension_facets
-from cheiron.domain.membership import FREE_TEXT_CRITERIA, Membership, cite_memberships, memberships
+from cheiron.domain.membership import (
+    FREE_TEXT_CRITERIA,
+    Membership,
+    cite_memberships,
+    cited_trials,
+    cohort_names,
+    memberships,
+)
 from cheiron.domain.trial_filter import TrialFilter
 from cheiron.domain.visualization import Visualization
 
@@ -31,6 +38,8 @@ class CohortReport:
     """Trials actually fetched and aggregated (at most the per-cohort cap)."""
     exact_counts: bool = False
     """The chart's counts cover all `matched` trials (registry counts per category)."""
+    names: tuple[str, ...] = ()
+    """What the cohort's free-text filters are called in trial text (domain.membership)."""
 
     @property
     def truncated(self) -> bool:
@@ -80,13 +89,13 @@ async def run_plan(
         c.label: sorted(r.trials, key=lambda t: bool(by_cohort[c.label][t.nct_id].mentioned_only))
         for c, r in zip(cohorts, results, strict=True)
     }
-    visualization = cite_memberships(
-        build_visualization(plan, trials, max_citations, totals),
-        by_cohort,
-        cohorts[0].label if len(cohorts) == 1 else None,
-    )
+    visualization = build_visualization(plan, trials, max_citations, totals)
+    by_cohort = await _with_passages(visualization, by_cohort, source)
+    visualization = cite_memberships(visualization, by_cohort, cohorts[0].label if len(cohorts) == 1 else None)
     reports = tuple(
-        CohortReport(c.label, c.filter, r.total_count, len(r.trials), exact_counts=c.label in totals)
+        CohortReport(
+            c.label, c.filter, r.total_count, len(r.trials), exact_counts=c.label in totals, names=cohort_names(by_cohort[c.label])
+        )
         for c, r in zip(cohorts, results, strict=True)
     )
     notes = tuple(
@@ -141,10 +150,29 @@ async def _memberships(
                 notes.append(
                     f"{count:,} of {len(result.trials):,} analyzed trials{where} mention {term!r} without registering "
                     f"it as {_REGISTERED_AS[criterion]} (ClinicalTrials.gov's search also matches text such as "
-                    "descriptions); their citations list it under mentioned_only."
+                    "descriptions, and a narrower registered name, e.g. a subtype, does not count); their citations "
+                    "list it under mentioned_only."
                 )
         by_cohort[cohort.label] = memberships(result.trials, cohort.filter, mentioned)
     return by_cohort, tuple(notes)
+
+
+async def _with_passages(
+    viz: Visualization, by_cohort: dict[str, dict[str, Membership]], source: Registry
+) -> dict[str, dict[str, Membership]]:
+    """Adds to each cited trial's membership the passage of its text that names the filtered
+    entity. One request per 200 cited trials; without it, citations keep registered values."""
+    cited = sorted(n for n in cited_trials(viz) if any(n in found and found[n].names for found in by_cohort.values()))
+    if not cited:
+        return by_cohort
+    try:
+        texts = await source.trial_texts(cited)
+    except TrialSourceError:
+        return by_cohort
+    return {
+        label: {n: m.with_passage(texts[n]) if n in texts else m for n, m in found.items()}
+        for label, found in by_cohort.items()
+    }
 
 
 async def _registry_counts(

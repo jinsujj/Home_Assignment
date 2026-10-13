@@ -2,10 +2,11 @@ from datetime import date
 
 import pytest
 
-from cheiron.adapters.outbound.caching import CachingPlanner, CachingTrialSource
+from cheiron.adapters.outbound.caching import CachingMentionJudge, CachingPlanner, CachingTrialSource
 from cheiron.application.planning import Question, StructuredFields
-from cheiron.application.ports import PlannerError, TrialSearchResult, TrialSourceError
+from cheiron.application.ports import MentionCase, PlannerError, TrialSearchResult, TrialSourceError
 from cheiron.domain.analysis import Dimension
+from cheiron.domain.membership import MentionRole
 from cheiron.domain.trial_filter import TrialFilter
 from tests.application.planning_factories import draft
 from tests.domain.factories import trial
@@ -291,3 +292,23 @@ async def test_mention_checks_are_cached() -> None:
     assert await cache.mentioned_only(PEMBRO, "intervention", 5000) == {"NCT1"}
     assert await cache.mentioned_only(PEMBRO, "intervention", 5000) == {"NCT1"}
     assert inner.calls == [("mentioned", "intervention")]
+
+
+async def test_each_trials_mentions_are_judged_once() -> None:
+    class Judge:
+        def __init__(self) -> None:
+            self.asked: list[list[str]] = []
+
+        async def judge(self, cases):
+            self.asked.append([c.nct_id for c in cases])
+            return {c.nct_id: (MentionRole.BACKGROUND, "drugs such as x") for c in cases}
+
+    inner = Judge()
+    judge = CachingMentionJudge(inner)
+    a, b = MentionCase("NCT1", ("x",), ()), MentionCase("NCT2", ("x",), ())
+
+    await judge.judge([a])
+    verdicts = await judge.judge([a, b])
+
+    assert inner.asked == [["NCT1"], ["NCT2"]]
+    assert set(verdicts) == {"NCT1", "NCT2"}

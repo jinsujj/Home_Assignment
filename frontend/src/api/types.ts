@@ -90,6 +90,8 @@ export interface CohortMeta {
   truncated: boolean
   /** Counts cover all matched trials (counted per category by the registry); citations cover the analyzed. */
   exact_counts: boolean
+  /** What the cohort's free-text filters are called in trial text; POST /api/mentions takes them. */
+  names: string[]
 }
 
 export interface TrialOption {
@@ -131,6 +133,18 @@ export interface Selection {
   label: string
   count: number
   citations: Citations
+  /** The compared cohort the datum belongs to, if any. */
+  cohort?: string
+}
+
+export type MentionRole = 'studied' | 'given_alongside' | 'eligibility' | 'background' | 'unclear'
+
+/** POST /api/mentions: what the filtered entity is to each trial, quoting its record. */
+export interface MentionVerdict {
+  nct_id: string
+  role: MentionRole
+  quote: Evidence | null
+  passages: number
 }
 
 /** GET /api/options */

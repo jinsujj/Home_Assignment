@@ -19,9 +19,11 @@ SNAPSHOT = "2026-10-09T09:00:05"
 
 class FakeSource:
     def __init__(
-        self, results: dict[TrialFilter, TrialSearchResult], counts=None, count_error=None, mentioned=None
+        self, results: dict[TrialFilter, TrialSearchResult], counts=None, count_error=None, mentioned=None, texts=None
     ) -> None:
         self.results = results
+        self.texts: dict[str, dict[str, tuple[str, ...]]] = texts or {}
+        self.text_calls: list[tuple[str, ...]] = []
         self.mentioned: dict[tuple[TrialFilter, str], frozenset[str] | None] = mentioned or {}
         self.counts: dict[TrialFilter, dict[str, int]] = counts or {}
         self.count_error = count_error
@@ -41,6 +43,10 @@ class FakeSource:
     async def mentioned_only(self, criteria: TrialFilter, criterion: str, limit: int) -> frozenset[str] | None:
         return self.mentioned.get((criteria, criterion), frozenset())
 
+    async def trial_texts(self, nct_ids):
+        self.text_calls.append(tuple(nct_ids))
+        return {n: self.texts[n] for n in nct_ids if n in self.texts}
+
     async def search(self, criteria: TrialFilter, max_trials: int, *, include_sites: bool = False) -> TrialSearchResult:
         self.calls.append((criteria, max_trials))
         self.include_sites.append(include_sites)
@@ -59,7 +65,7 @@ async def test_fetches_every_cohort_and_reports_coverage() -> None:
 
     assert sorted(source.calls, key=lambda c: c[0].intervention) == [(A.filter, 1), (B.filter, 1)]
     assert result.visualization.type is ChartType.GROUPED_BAR
-    assert result.cohorts == (CohortReport("A", A.filter, 1, 1), CohortReport("B", B.filter, 40, 1))
+    assert result.cohorts == (CohortReport("A", A.filter, 1, 1, names=("a",)), CohortReport("B", B.filter, 40, 1, names=("b",)))
     assert result.notes == ("Analyzed the first 1 of 40 matching trials for B; figures cover the analyzed trials only.",)
 
 
@@ -151,7 +157,7 @@ async def test_truncated_cohorts_are_counted_by_the_registry() -> None:
     assert source.count_calls == [(A.filter, Dimension.PHASE, ("PHASE1", "PHASE2"))]  # B is complete
     rows = [(r["phase"], r["cohort"], r["trial_count"], r["citations"].total) for r in result.visualization.data]
     assert rows == [("Phase 1", "A", 12, 1), ("Phase 1", "B", 0, 0), ("Phase 2", "A", 30, 1), ("Phase 2", "B", 1, 1)]
-    assert result.cohorts[0] == CohortReport("A", A.filter, 40, 2, exact_counts=True)
+    assert result.cohorts[0] == CohortReport("A", A.filter, 40, 2, exact_counts=True, names=("a",))
     assert result.notes == (
         "Counts cover all 40 matching trials for A, counted per category by ClinicalTrials.gov; "
         "citations and other notes cover the first 2 analyzed.",
@@ -212,7 +218,8 @@ async def test_citations_show_why_each_trial_is_in_its_cohort() -> None:
     assert (second.nct_id, second.excerpt, second.mentioned_only) == ("NCT2", "phases: PHASE2", ("a",))
     assert result.notes == (
         "1 of 2 analyzed trials for A mention 'a' without registering it as an intervention (ClinicalTrials.gov's "
-        "search also matches text such as descriptions); their citations list it under mentioned_only.",
+        "search also matches text such as descriptions, and a narrower registered name, e.g. a subtype, does not "
+        "count); their citations list it under mentioned_only.",
     )
 
 
@@ -226,3 +233,26 @@ async def test_mentions_that_cannot_be_checked_are_reported() -> None:
 
     assert result.notes == ("Trials that only mention 'a' for A could not be told apart from the others.",)
     assert result.visualization.data[0]["citations"].items[0].mentioned_only == ()
+
+
+async def test_cited_trials_quote_the_passage_naming_the_filtered_drug() -> None:
+    cited = trial("NCT1", phases=(Phase.PHASE2,), interventions=(drug("Pembrolizumab"),))
+    texts = {"NCT1": {"protocolSection.descriptionModule.briefSummary": ("This study adds pembrolizumab to chemotherapy.",)}}
+    source = FakeSource({A.filter: TrialSearchResult((cited,), total_count=1)}, texts=texts)
+
+    result = await run_plan(CountBy((A,), Dimension.PHASE), source)
+
+    [citation] = result.visualization.data[0]["citations"].items
+    assert citation.excerpt == (
+        "phases: PHASE2; interventions.name: Pembrolizumab; briefSummary: This study adds pembrolizumab to chemotherapy."
+    )
+    assert source.text_calls == [("NCT1",)]
+
+
+async def test_without_free_text_filters_no_text_is_fetched() -> None:
+    by_phase = Cohort("Phase 3", TrialFilter(phases=frozenset({Phase.PHASE3})))
+    source = FakeSource({by_phase.filter: TrialSearchResult((trial("NCT1", phases=(Phase.PHASE3,)),), total_count=1)})
+
+    await run_plan(CountBy((by_phase,), Dimension.STATUS), source)
+
+    assert source.text_calls == []

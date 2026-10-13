@@ -1,7 +1,7 @@
 """In-memory caches as port decorators: registry data until new data is published, and plans.
 
-CachingTrialSource keeps searches, category counts, mention checks, name lookups and posted
-results until new data is published.
+CachingTrialSource keeps searches, category counts, mention checks, trial texts, name lookups and
+posted results until new data is published.
 
 ClinicalTrials.gov publishes data in one batch per US business day (measured: ~800–1,200
 updated studies per posting day, none on weekends and holidays), and `/version` reports
@@ -20,8 +20,17 @@ from datetime import date
 from typing import Any
 
 from cheiron.application.planning import PlanDraft, Question
-from cheiron.application.ports import QueryPlanner, Registry, TrialCandidate, TrialSearchResult, TrialSourceError
+from cheiron.application.ports import (
+    MentionCase,
+    MentionJudge,
+    QueryPlanner,
+    Registry,
+    TrialCandidate,
+    TrialSearchResult,
+    TrialSourceError,
+)
 from cheiron.domain.analysis import Dimension
+from cheiron.domain.membership import MentionRole
 from cheiron.domain.results import PostedResults
 from cheiron.domain.trial_filter import TrialFilter
 
@@ -29,6 +38,7 @@ SITE_WEIGHT = 3  # site lists roughly triple a result's memory (measured)
 RESULTS_WEIGHT = 500  # one trial's posted results (~220 KB of JSON) weigh about as much as 500 trials
 NAME_LOOKUP_WEIGHT = 1
 COUNTS_WEIGHT = 1
+TEXT_WEIGHT = 3  # a trial's free text (~6 KB) against ~2 KB per searched trial
 
 
 class CachingTrialSource:
@@ -72,6 +82,11 @@ class CachingTrialSource:
             ("mentioned_only", criteria, criterion, limit),
             lambda: self._inner.mentioned_only(criteria, criterion, limit),
             lambda _: COUNTS_WEIGHT,
+        )
+
+    async def trial_texts(self, nct_ids: Sequence[str]) -> dict[str, dict[str, tuple[str, ...]]]:
+        return await self._cached(
+            ("texts", tuple(nct_ids)), lambda: self._inner.trial_texts(nct_ids), lambda found: len(found) * TEXT_WEIGHT
         )
 
     async def find_trials(self, name: str) -> tuple[TrialCandidate, ...]:
@@ -148,3 +163,23 @@ class CachingPlanner:
         if len(self._drafts) > self._max:
             self._drafts.popitem(last=False)
         return draft
+
+
+class CachingMentionJudge:
+    """MentionJudge decorator: each trial's passages are judged once; a batch asks only for new ones."""
+
+    def __init__(self, inner: MentionJudge, max_cases: int = 2048) -> None:
+        self._inner = inner
+        self._max = max_cases
+        self._verdicts: OrderedDict[MentionCase, tuple[MentionRole, str]] = OrderedDict()
+
+    async def judge(self, cases: Sequence[MentionCase]) -> dict[str, tuple[MentionRole, str]]:
+        new = [c for c in cases if c not in self._verdicts]
+        if new:
+            answers = await self._inner.judge(new)
+            for case in new:
+                if case.nct_id in answers:
+                    self._verdicts[case] = answers[case.nct_id]
+            while len(self._verdicts) > self._max:
+                self._verdicts.popitem(last=False)
+        return {c.nct_id: self._verdicts[c] for c in cases if c in self._verdicts}

@@ -29,7 +29,8 @@ from cheiron.domain.analysis import (
 )
 from cheiron.domain.trial import Phase, Status, StudyType
 from cheiron.domain.trial_filter import TrialFilter
-from cheiron.domain.visualization import STUDY_URL, Channel, ChartType, Citations
+from cheiron.domain.membership import MentionRole
+from cheiron.domain.visualization import STUDY_URL, Channel, ChartType, Citations, Evidence
 
 MAX_TRIALS_LIMIT = 10_000
 
@@ -280,6 +281,10 @@ class CohortMeta(BaseModel):
     exact_counts: bool = Field(
         description="Counts cover all `matched` trials (counted per category by the registry); citations cover `analyzed`."
     )
+    names: list[str] = Field(
+        description="What the cohort's free-text filters are called in trial text (the terms and the registered "
+        "value matching them most often); POST /api/mentions takes them."
+    )
 
 
 class TrialOption(BaseModel):
@@ -347,6 +352,7 @@ class VisualizationResponse(BaseModel):
                         analyzed=c.analyzed,
                         truncated=c.truncated,
                         exact_counts=c.exact_counts,
+                        names=list(c.names),
                     )
                     for c in result.cohorts
                 ],
@@ -381,3 +387,29 @@ def _without_citation_ids(data: list[dict[str, Any]] | dict[str, list[dict[str, 
     if isinstance(data, dict):
         return {part: [row(r) for r in rows] for part, rows in data.items()}
     return [row(r) for r in data]
+
+
+NCT_ID = Annotated[str, Field(pattern=r"^NCT\d{8}$")]
+
+
+class MentionsRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    nct_ids: list[NCT_ID] = Field(min_length=1, max_length=10, description="Trials to judge, e.g. a datum's citations.")
+    names: list[Annotated[str, Field(min_length=1, max_length=200)]] = Field(
+        min_length=1, max_length=5, description="What the entity is called, e.g. `meta.cohorts[].names`."
+    )
+
+
+class MentionVerdictOut(BaseModel):
+    nct_id: str
+    role: MentionRole = Field(description="What the entity is to the trial; `unclear` when the model's quote was not found.")
+    quote: Evidence | None = Field(description="The registered passage containing the model's quote, verbatim.")
+    passages: int = Field(description="Passages naming the entity that the model read.")
+
+
+class MentionsResponse(BaseModel):
+    verdicts: list[MentionVerdictOut]
+    note: str = Field(
+        "Roles are a language model's reading of the quoted passages; each quote was found in the trial's record."
+    )

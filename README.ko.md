@@ -32,9 +32,10 @@ cp .env.example .env   # 그다음 OPENAI_API_KEY 설정
 
 | 변수 | 필수 여부 | 용도 |
 |---|---|---|
-| `OPENAI_API_KEY` | `/api/visualize`에 필요 | LLM 플래너. `/api/plans`는 없어도 동작한다 |
+| `OPENAI_API_KEY` | `/api/visualize`, `/api/mentions`에 필요 | LLM 플래너와 언급 판정. `/api/plans`는 없어도 동작한다 |
 | `OPENAI_MODEL` | 아니오 | 플래너 모델, 기본값 `gpt-5.4-mini` |
 | `OPENAI_REASONING_EFFORT` | 아니오 | 기본값 `low`. `gpt-4.1-mini`처럼 추론 기능이 없는 모델이면 빈 값으로 둔다 |
+| `OPENAI_MENTION_REASONING_EFFORT` | 아니오 | 언급 판정용 같은 설정, 기본값 `high` |
 
 `.env`는 git에서 제외된다. `.env.example`에 변수와 사용 가능한 모델이 정리되어 있다.
 
@@ -64,7 +65,7 @@ cd frontend && npm install && npm run dev       # UI: :5173, /api는 :8000으로
 cd backend
 uv run pytest            # 오프라인: 단위 테스트, 녹화한 API 응답, 가짜 소스를 쓴 HTTP 테스트
 uv run pytest -m live    # 실제 ClinicalTrials.gov API에 대한 계약 확인과 교차 검증
-uv run --env-file ../.env pytest -m llm   # 실제 모델로 플래너 평가 (19개 사례)
+uv run --env-file ../.env pytest -m llm   # 실제 모델로 플래너(19개 사례)와 언급 판정(13개) 평가
 cd ../frontend && npm run build && npm run lint   # 타입 검사, 빌드, lint
 ```
 
@@ -76,6 +77,7 @@ cd ../frontend && npm run build && npm run lint   # 타입 검사, 빌드, lint
 | `POST /api/plans` | 구조화된 분석 계획을 LLM 없이 바로 실행. |
 | `GET /api/options` | 필터 선택지: 등록부의 모든 국가(정확한 표기, 시험 수), 자주 쓰이는 질환·중재·스폰서 추천어, 단계와 상태 코드. 6시간 캐시. |
 | `GET /api/version` | `{"data_version": "2026-10-09T09:00:05"}`: 현재 제공 중인 등록부 데이터 스냅샷(ClinicalTrials.gov `/version`의 `dataTimestamp`, 최대 10분마다 확인). |
+| `POST /api/mentions` | `{"nct_ids": [...], "names": [...]}` → 이름이 가리키는 대상이 각 시험에서 어떤 역할인지(연구 대상, 함께 투여, 등록 조건, 배경, 불분명), LLM이 원문을 인용해 판정. [시험이 그 단어를 언급하는 이유](#ai-설계-시험이-그-단어를-언급하는-이유) 참고. |
 | `GET /api/health` | 생존 확인. |
 | `GET /api/docs` | Pydantic 모델에서 생성한 OpenAPI 문서. |
 
@@ -162,7 +164,8 @@ cd ../frontend && npm run build && npm run lint   # 타입 검사, 빌드, lint
     "interpretation": "Compare trial phases for Keytruda versus Opdivo.",   // /api/visualize만
     "plan": { ... },                       // 실제로 실행한 분석, 적용된 모든 필터 포함
     "cohorts": [ { "label": "Pembrolizumab", "matched": 2974, "analyzed": 2974, "truncated": false,
-                   "exact_counts": false }, ... ],   // exact_counts: "상한을 넘는 정확한 건수" 참고
+                   "exact_counts": false,   // "상한을 넘는 정확한 건수" 참고
+                   "names": ["pembrolizumab", "Pembrolizumab"] }, ... ],   // 필터 단어와 등록된 이름
     "notes": [ "175 of 2974 trials in Pembrolizumab have no registered phase and are not shown.", ... ],
     "data_version": "2026-10-09T09:00:05"  // 답을 계산한 등록부 데이터 스냅샷
   }
@@ -213,8 +216,10 @@ cd ../frontend && npm run build && npm run lint   # 타입 검사, 빌드, lint
         "url": "https://clinicaltrials.gov/study/NCT04003636",
         "evidence": [ { "field": "protocolSection.designModule.phases", "value": "PHASE3" },
                       { "field": "protocolSection.armsInterventionsModule.interventions.name",
-                        "value": "Pembrolizumab" } ],
-        "excerpt": "phases: PHASE3; interventions.name: Pembrolizumab",
+                        "value": "Pembrolizumab" },
+                      { "field": "protocolSection.identificationModule.briefTitle",
+                        "value": "Pembrolizumab (MK-3475) Plus Gemcitabine/Cisplatin Versus Placebo ..." } ],
+        "excerpt": "phases: PHASE3; interventions.name: Pembrolizumab; briefTitle: Pembrolizumab (MK-3475) ...",
         "mentioned_only": [] }
     ],
     "nct_ids": null } }
@@ -224,7 +229,8 @@ cd ../frontend && npm run build && npm run lint   # 타입 검사, 빌드, lint
   건수를 등록부에서 받은 경우에는 `total`이 `trial_count`보다 작다("상한을 넘는 정확한 건수" 참고).
 - `evidence`는 그 시험을 이 데이터 항목에 넣은, API 시험 JSON의 필드와 등록된 그대로의 값이다.
   연결선은 양 끝마다 하나씩 두 개, 게시된 결과는 값과 구간 한계를 담는다. 그 뒤에 시험이 코호트에
-  속하는 근거가 붙는다(아래 참고).
+  속하는 근거가 붙는다. 코호트 필터와 일치하는 등록값, 그리고 시험 원문에서 그것을 언급하는 문장이다
+  (아래 참고).
 - `excerpt`는 같은 근거를 한 줄 텍스트로 쓴 것으로, 과제 예시의 형태(`citations[].{nct_id, excerpt}`)와 같다.
 - `nct_ids`는 요청에 `all_citation_ids`를 켰을 때 기여한 모든 시험을 담고, 아니면 `null`이다.
 - `notes`는 가정과 주의 사항을 평이한 문장으로 알려 준다(여러 값을 가진 항목의 집계, 누락된
@@ -239,11 +245,23 @@ cd ../frontend && npm run build && npm run lint   # 타입 검사, 빌드, lint
 코호트에서 가장 흔한 값. 그래서 "Keytruda"는 "Pembrolizumab"을 인용한다). 언급만 하는 시험은
 `mentioned_only`에 그 단어가 담기고, 인용 순서에서 뒤로 가며, `meta.notes`가 그 수를 알려 준다.
 실제 API 테스트가 3상 펨브롤리주맙 시험 전부에 대해 등록부의 판정과 등록된 약물명이 일치하는지
-확인한다. 비용은 자유 텍스트 필터마다 요청 하나, 그런 시험 1,000건마다 하나씩 더 든다.
+확인한다. 비용은 자유 텍스트 필터마다 요청 하나, 그런 시험 1,000건마다 하나씩 더 든다. 질환에서는
+이 판정이 과하게 잡는다. 더 좁은 등록명("Lung Adenocarcinoma", "NSCLC Stage IV")은 "lung cancer"와
+일치하지 않으므로, 표시된 시험 중 일부는 실제로 폐암을 연구한다. 아래의 LLM 판정이 이를 가려낸다.
 
-전체 목록을 선택 사항으로 둔 것은 크기 때문이다. 펨브롤리주맙 기준 실측으로 단계 차트는
-21 KB에서 114 KB(대체 보기마다 목록을 반복), 약물 네트워크는 1,037 KB에서 1,268 KB로 커진다.
-`excerpt` 자체도 기본 응답을 9%(막대 차트)~17%(네트워크) 키운다.
+**그것을 언급하는 원문.** 인용된 시험(전체 기여 시험이 아니라 자세히 보여주는 `items`)마다, 필터
+단어나 등록된 이름이 나오는 시험 원문의 문장도 인용한다. 찾는 순서는 제목, 공식 제목, 요약, 군과
+중재 설명, 상세 설명, 키워드, 선정 기준이다. 제목과 요약은 시험을 설명하는 반면 선정 기준은 다른
+치료를 언급하는 경우가 많기 때문이다. 인용 문장은 이름 주변의 문장이나 줄로, 최대 240자이며 단어
+경계에서 자르고, 언제나 원문의 정확한 부분 문자열이다. 문장은 대문자 앞의 ". "나 줄바꿈에서만 끝나므로
+"e.g. pembrolizumab", "etc.", "2.5 mg"에서는 끝나지 않는다. 이 규칙 전에는 실제 기록에서 두 실수가
+모두 나왔다("g pembrolizumab)"). 인용된 시험의 원문은 200건마다 요청 하나(`filter.ids`)로 받고,
+받지 못하면 인용은 등록값 근거만 유지한다.
+
+펨브롤리주맙 기준 실측으로 기본 단계 차트는 54 KB, Keytruda vs Opdivo는 123 KB, 약물 네트워크는
+2,081 KB이고, 그중 약 3분의 2를 대체 보기가 반복한다. 압축을 받는 클라이언트(브라우저 포함)에는 gzip으로
+보내 4 KB, 16 KB, 132 KB가 된다. 전체 NCT ID 목록은 선택 사항이다. `all_citation_ids`를 켜면 같은
+답이 147 KB, 353 KB, 2,312 KB(gzip 36, 91, 186 KB)가 된다.
 
 ## 주요 설계 결정과 트레이드오프
 
@@ -300,6 +318,36 @@ Opdivo"라고 인용했다(질문에 없는 문구). 이 필터를 조용히 빼
 |---|---|---|
 | `gpt-5.4-mini`, reasoning `low` (기본값) | 첫 평가 세트 17/17 두 번, 현재 세트 19/19 | 약 1.5–2.2초 |
 | `gpt-4.1-mini` | 첫 평가 세트 16/17 (Keytruda vs Opdivo 1회 실패, 재실행 3/3 통과) | 약 1.8–4.8초 |
+
+### AI 설계: 시험이 그 단어를 언급하는 이유
+
+시험이 약을 언급만 한다는 사실만으로는 이유를 알 수 없다. 펨브롤리주맙 "언급" 335건에는 표준 치료인
+펨브롤리주맙과 함께 진행하는 대변 이식 연구, 펨브롤리주맙 치료 경험을 요구하는 시험, 환자가 통상 치료로
+받는 연구가 섞여 있다. 이를 가르려면 글을 읽어야 하므로, `POST /api/mentions`(데모 인용 패널의
+"Ask AI" 버튼)는 시험마다 제목과 그 대상을 언급하는 모든 문장(최대 6개)을 LLM에 주고, 역할 하나를
+고르게 한다. `studied`, `given_alongside`, `eligibility`, `background`, `unclear`이며 약물, 질환,
+기관 각각에 맞게 정의했다.
+
+플래너의 근거 확인 규칙이 그대로 적용된다. 판정마다 제목이나 문장을 인용해야 하고,
+`application/mentions.py`는 그 인용(세 단어 이상, 공백·대소문자·마크다운 이스케이프 무시)이 그곳에
+있을 때만 판정을 남긴다. 응답에는 그 원문 문장이 그대로 실리고, 찾지 못한 인용은 역할을 `unclear`로
+바꾼다. 한 데이터 항목의 인용 시험(요청당 최대 10건)에 대해 요청할 때만 실행하며, 코호트 전체나 차트
+숫자에는 쓰지 않는다. 판정은 시험과 문장 단위로 캐시한다(`CachingMentionJudge`).
+
+평가(`tests/llm/test_mention_eval.py`, 직접 읽고 정답을 정한 기록 13건: 펨브롤리주맙 8건, 유방암·폐암
+5건. "Lung Adenocarcinoma"로 등록되어 언급만으로 표시된 시험 포함). 평가를 만들며 모델이 아니라 우리
+코드의 버그 셋을 찾았다. 문장 자르기가 "e.g."에서 멈췄고("g pembrolizumab)"), 대조 단계가 문장 앞의
+섹션 표시를 복사한 인용이나 제목 인용을 거부했으며, 역할 정의가 약물에만 맞아 유방암 시험이 모두
+`background`로 나왔다. 고친 뒤 `gpt-5.4-mini`로 각 3회 실행한 결과:
+
+| 추론 강도 | 정답 | 13건 처리 시간 |
+|---|---|---|
+| `low` | 13, 12, 12 / 13 | 11–13초 |
+| `high` (기본값, `OPENAI_MENTION_REASONING_EFFORT`) | 12, 11, 12 / 13 | 35–93초 |
+
+추론 강도를 높여도 나아지지 않았다. 틀린 것은 해석이 갈리는 경우(관찰 연구에서 그 약을 "받을 예정인"
+환자)였고, 제목과 섹션 표시를 더 자주 인용했다. `high`는 선택에 따른 기본값이며, 여기서는 `low`도
+정확도가 같고 몇 배 빠르다.
 
 ### 모든 질문을 하나의 문법으로: `AnalysisPlan`
 
@@ -578,9 +626,10 @@ Python 3.14 이상을 대상으로 한다(기본으로 지연 평가되는 어�
 - 평가는 영어 질문만 다룬다. 다른 언어는 시험하지 않았다.
 - 결과가 있는 여러 시험에 걸리는 시험 이름은 가장 큰 시험으로 정한다. 어느 것이 "본" 시험인지 아는
   것이 아니라 규칙이므로, 대안을 항상 함께 보여준다.
-- 대체 보기는 행의 인용을 반복하므로 응답이 약 절반에서 3분의 2 커진다(묶음 막대 59 KB 중 대체 보기
-  39 KB, 흑색종 스폰서–약물 네트워크 428 KB 중 205 KB). 시간이 더 있다면: 보기가 기본 차트의 행을
-  참조하게 한다.
+- 대체 보기는 행의 인용을 반복해 응답의 약 3분의 2를 차지한다(펨브롤리주맙 약물 네트워크 2,081 KB 중
+  1,351 KB, gzip으로는 전체 132 KB). 시간이 더 있다면: 보기가 기본 차트의 행을 참조하게 한다.
+- 언급 역할은 최대 6개 문장과 제목에 대한 LLM의 해석이다. 해석이 갈리는 기록(관찰 연구에서 약을
+  "받을 예정인" 환자)에서는 실행마다 달라질 수 있다. 역할과 함께 보여주는 인용으로 읽는 사람이 확인할 수 있다.
 - 지도는 막대 차트의 국가(기본 상위 15개)만 보여주고, 모든 국가를 보여주지는 않는다.
 - 군집은 표시된 부분 그래프(기본 상위 30개 노드)로 계산하고 모듈러리티도 높지 않다(예시에서
   Q ≈ 0.2). 군집은 경향이지 엄격한 분할이 아니다. 이름 변형("Fluorouracil", "5-fluorouracil")은 별도
@@ -640,6 +689,7 @@ backend/
       visualization.py               출력 명세: 차트 유형, 채널, 인용
       charts/views.py                기본 차트의 행에서 만드는 대체 보기
       charts/communities.py          네트워크용 탐욕적 모듈러리티 군집
+      membership.py                  시험이 코호트에 속하는 근거: 등록값, 원문 문장
       geography.py, country_codes.json   등록부 국가명 -> ISO 3166-1 숫자 코드
       results.py                     시험의 게시된 결과 지표와 이상반응
     application/
@@ -649,11 +699,13 @@ backend/
       options.py                     등록부 어휘에서 만든 필터 선택지, 캐시
       trial_lookup.py                이름이 가리키는 시험(규칙과 대안)
       visualize.py                   유스케이스: 수정 한 번을 포함한 계획, 그다음 run_plan
+      mentions.py                    유스케이스: LLM이 언급 이유를 판정, 인용은 원문과 대조
     adapters/
       inbound/http/                  FastAPI 라우트와 Pydantic 스키마
       outbound/openai_planner.py     OpenAI structured outputs 기반 QueryPlanner, 플래너 지시문
+      outbound/openai_mentions.py    OpenAI structured outputs 기반 MentionJudge
       outbound/ctgov/                ClinicalTrials.gov 클라이언트, 질의 매개변수, ACL 매퍼(시험, 결과)
-      outbound/caching.py            데코레이터: 데이터 스냅샷 기준 등록부 데이터, 플래너 초안
+      outbound/caching.py            데코레이터: 데이터 스냅샷 기준 등록부 데이터, 계획, 판정
     main.py                        조립 지점(composition root)
   tests/                           단위, HTTP, 캐시, 플래너 테스트, 녹화한 응답,
                                    실제 API 확인(-m live), 플래너 평가(-m llm)

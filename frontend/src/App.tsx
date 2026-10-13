@@ -352,7 +352,14 @@ export default function App() {
               <div className="columns">
                 <section className="card">
                   <h3>Citations</h3>
-                  <CitationPanel selection={selection} />
+                  <CitationPanel
+                    key={selection ? `${selection.label}|${selection.count}` : 'none'}
+                    selection={selection}
+                    names={
+                      result.meta.cohorts.find((c) => c.label === (selection?.cohort ?? result.meta.cohorts[0]?.label))
+                        ?.names ?? []
+                    }
+                  />
                 </section>
                 <section className="card">
                   <h3>Meta</h3>
