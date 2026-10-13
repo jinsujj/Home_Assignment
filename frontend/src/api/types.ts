@@ -7,6 +7,12 @@ export type ChartType =
   | 'histogram'
   | 'scatter_plot'
   | 'network_graph'
+  | 'stacked_bar_chart'
+  | 'heatmap'
+  | 'choropleth_map'
+  | 'donut_chart'
+  | 'line_chart'
+  | 'forest_plot'
 
 export type FieldType = 'nominal' | 'ordinal' | 'quantitative' | 'temporal'
 
@@ -93,8 +99,14 @@ export interface Meta {
   notes: string[]
 }
 
+/** Another chart form of the same data, with notes about this form. */
+export interface View extends Visualization {
+  notes: string[]
+}
+
 export interface VisualizationResponse {
   visualization: Visualization
+  alternatives: View[]
   meta: Meta
 }
 

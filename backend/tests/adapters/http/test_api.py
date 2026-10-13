@@ -325,3 +325,15 @@ async def test_nct_id_field_is_validated() -> None:
     response = await client_with_planner(FakeSource(), ScriptedPlanner()).post("/api/visualize", json={"query": "x", "nct_id": "KEYNOTE-189"})
 
     assert response.status_code == 422
+
+
+async def test_responses_carry_alternative_views_with_their_notes() -> None:
+    source = FakeSource([trial("NCT1", phases=(Phase.PHASE2,))])
+
+    body = (await client_for(source).post("/api/plans", json={"plan": {"kind": "count_by", "cohorts": [PEMBRO], "dimension": "phase"}})).json()
+
+    [donut] = body["alternatives"]
+    assert donut["type"] == "donut_chart"
+    assert donut["data"][0]["share"] == 100.0
+    assert donut["data"][0]["citations"]["total"] == 1
+    assert donut["notes"][0] == "Each slice is its share of the counts in the bar chart."

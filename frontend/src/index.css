@@ -341,6 +341,37 @@ main header h2 {
   background: var(--card);
 }
 
+.views {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.view {
+  padding: 4px 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--card);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.view.on {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
+.view-notes {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .stale {
   opacity: 0.5;
 }

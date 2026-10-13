@@ -14,6 +14,13 @@ class ChartType(StrEnum):
     HISTOGRAM = "histogram"
     SCATTER = "scatter_plot"
     NETWORK = "network_graph"
+    # Alternative views of the same data (charts.views)
+    STACKED_BAR = "stacked_bar_chart"
+    HEATMAP = "heatmap"
+    CHOROPLETH = "choropleth_map"
+    DONUT = "donut_chart"
+    LINE = "line_chart"
+    FOREST = "forest_plot"
 
 
 class FieldType(StrEnum):

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ApiError, askQuestion, getOptions, runPlan } from './api/client'
-import type { SearchOptions, Selection, VisualizationResponse } from './api/types'
+import type { SearchOptions, Selection, View, Visualization, VisualizationResponse } from './api/types'
 import { CitationPanel } from './components/CitationPanel'
 import { Composer } from './components/Composer'
 import { MetaPanel } from './components/MetaPanel'
@@ -12,6 +12,28 @@ type Call = (request: unknown, signal: AbortSignal) => Promise<VisualizationResp
 
 const questionRequest = (query: string, fields: StructuredFields) => ({ query, ...fields })
 
+const VIEW_LABELS: Record<string, string> = {
+  bar_chart: 'Bars',
+  grouped_bar_chart: 'Grouped bars',
+  time_series: 'Over time',
+  histogram: 'Histogram',
+  scatter_plot: 'Scatter',
+  network_graph: 'Network',
+  stacked_bar_chart: 'Mix (100%)',
+  heatmap: 'Heatmap',
+  choropleth_map: 'Map',
+  donut_chart: 'Donut',
+  line_chart: 'Cumulative',
+  forest_plot: 'Intervals',
+}
+
+/** Tab name for a view; alternatives sharing a type with the answer are named by their title. */
+function viewLabel(view: Visualization, index: number): string {
+  if (index > 0 && view.type === 'time_series') return 'Cumulative'
+  if (index > 0 && view.type === 'bar_chart') return 'Top links'
+  return VIEW_LABELS[view.type] ?? view.type
+}
+
 export default function App() {
   const [query, setQuery] = useState(EXAMPLES[0].query)
   const [fields, setFields] = useState<StructuredFields>(EXAMPLES[0].fields ?? {})
@@ -21,6 +43,7 @@ export default function App() {
   const [loading, setLoading] = useState(true)
   const [selection, setSelection] = useState<Selection | null>(null)
   const [showRaw, setShowRaw] = useState(false)
+  const [viewIndex, setViewIndex] = useState(0)
   const [options, setOptions] = useState<SearchOptions | null>(null)
   const inFlight = useRef<AbortController | null>(null)
 
@@ -41,6 +64,7 @@ export default function App() {
     call(request, controller.signal)
       .then((response) => {
         setResult(response)
+        setViewIndex(0)
         setPlanText(JSON.stringify({ plan: response.meta.plan }, null, 2))
         setError(null)
       })
@@ -94,7 +118,8 @@ export default function App() {
     }
   }
 
-  const viz = result?.visualization
+  const views: (Visualization | View)[] = result ? [result.visualization, ...result.alternatives] : []
+  const viz = views[viewIndex] ?? result?.visualization
 
   return (
     <div className="app">
@@ -167,10 +192,36 @@ export default function App() {
                 )}
               </header>
               <section className={`card ${loading ? 'stale' : ''}`}>
+                {views.length > 1 && (
+                  <div className="views" role="tablist" aria-label="Chart views">
+                    {views.map((view, index) => (
+                      <button
+                        key={`${view.type}-${index}`}
+                        type="button"
+                        role="tab"
+                        aria-selected={index === viewIndex}
+                        className={index === viewIndex ? 'view on' : 'view'}
+                        onClick={() => {
+                          setViewIndex(index)
+                          setSelection(null)
+                        }}
+                      >
+                        {viewLabel(view, index)}
+                      </button>
+                    ))}
+                  </div>
+                )}
                 {viz.type === 'network_graph' ? (
                   <NetworkGraph visualization={viz} onSelect={setSelection} />
                 ) : (
                   <VegaChart visualization={viz} onSelect={setSelection} />
+                )}
+                {'notes' in viz && viz.notes.length > 0 && (
+                  <ul className="view-notes">
+                    {viz.notes.map((note) => (
+                      <li key={note}>{note}</li>
+                    ))}
+                  </ul>
                 )}
               </section>
               <div className="columns">

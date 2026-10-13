@@ -15,7 +15,8 @@
     "react-dom": "^19.2.8",
     "vega": "^6.4.0",
     "vega-embed": "^7.3.0",
-    "vega-lite": "^6.5.0"
+    "vega-lite": "^6.5.0",
+    "world-atlas": "^2.0.2"
   },
   "devDependencies": {
     "@types/node": "^24.13.3",

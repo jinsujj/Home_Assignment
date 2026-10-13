@@ -143,6 +143,11 @@ cohorts) are rejected with `422` and an explanation; ClinicalTrials.gov failures
 {
   "visualization": { "type": "grouped_bar_chart", "title": "Trials by phase — Pembrolizumab vs Nivolumab",
                      "encoding": { "x": { ... }, "y": { ... }, "series": { ... } }, "data": [ ... ] },
+  "alternatives": [                        // the same data in other chart forms (see below)
+    { "type": "stacked_bar_chart", "title": "Phase mix within each cohort — ...", "encoding": { ... },
+      "data": [ ... ], "notes": [ "Each bar is 100% of one cohort's counts, ..." ] },
+    { "type": "heatmap", ... }
+  ],
   "meta": {
     "source": "clinicaltrials.gov",
     "query": "Compare phases for Keytruda vs Opdivo",            // /api/visualize only
@@ -169,6 +174,17 @@ category order to render.
 | `histogram` | `x` (`bin_start`), `x2` (`bin_end`), `y` | one row per bin; bins are `[bin_start, bin_end)`; the last bin may be open (`bin_end: null`) |
 | `scatter_plot` | `x`, `y`, `tooltip` | one row per trial (`nct_id`, `title`, both measures) |
 | `network_graph` | `node_id`, `node_label`, `node_size`, `node_color`, `edge_source`, `edge_target`, `edge_weight` | `{ "nodes": [...], "edges": [...] }` |
+
+Alternative views (`alternatives`) add these types; each item also carries its own `notes`:
+
+| `type` | Channels | Data |
+|---|---|---|
+| `stacked_bar_chart` | `x` (group), `y` (`share`, %, stacks to 100), `color` (category) | one row per group × category |
+| `heatmap` | `x`, `y` (categories), `color` (value) | one row per cell |
+| `choropleth_map` | `region` (`iso_numeric`, ISO 3166-1 numeric), `label` (country), `color` (value) | one row per country; join to world shapes by `region` (e.g. world-atlas `id`) |
+| `donut_chart` | `theta` (value), `color` (category), `tooltip` (`share`, %) | one row per category |
+| `line_chart` | `x`, `y` (quantitative) | one row per point |
+| `forest_plot` | `y` (outcome), `series` (group), `x` (value), `x_lower`, `x_upper` | one row per outcome × group |
 
 A single trial's results are a `grouped_bar_chart` (x = outcome or adverse event, series = the
 trial's groups) and may add `y_lower` / `y_upper` channels: the posted interval (e.g. 95% CI), to
@@ -277,6 +293,33 @@ country, investigator, site. Measures: enrollment, duration (months), start year
 
 Adding a question class means adding an enum member and how to read it from a `Trial`
 (`domain/facets.py`), not a new pipeline.
+
+### One answer, several views
+
+The design goal asks for many visualization types from one coherent approach. Every answer
+therefore comes with **alternative views computed from the primary chart's rows**
+(`domain/charts/views.py`), never from new data or another LLM call: all views of an answer
+show the same numbers and carry the same citations, and which views exist depends only on the
+primary's type and encoding.
+
+| Primary | Alternatives | Why |
+|---|---|---|
+| `bar_chart` | `choropleth_map` (when categories are countries), `donut_chart` | geography reads best on a map; a donut shows each category's share |
+| `grouped_bar_chart` (comparison) | `stacked_bar_chart` (100% per group), `heatmap` | groups of different size (Keytruda 2,974 vs Opdivo 2,030 trials) compare fairly as mixes: their phase mixes turn out nearly identical |
+| `grouped_bar_chart` (a trial's outcomes) | `forest_plot` | point estimates with intervals, the usual form for posted results |
+| `time_series` | cumulative `time_series` | growth and total in one view |
+| `network_graph` | `heatmap` (adjacency matrix), `bar_chart` (strongest links) | dense networks are hard to read; the matrix and ranking give exact values |
+| `histogram` | `line_chart` (cumulative distribution) | "what share of trials enroll fewer than N" reads directly |
+
+Rates (adverse events in %) get a heatmap but no 100% stack, which would add up rates of
+different events. The map joins countries by ISO 3166-1 numeric code from a table of the
+registry's 226 country names (`domain/country_codes.json`): generated with pycountry, then
+checked by hand, which caught a wrong fuzzy match ("Kosovo" → Serbia); 14 names needed manual
+codes and four have no current code (Kosovo and three former states) and are listed in the
+map's notes. Building the views in a browser found two bugs: Vega-Lite drops map shapes whose
+colour value is null (countries without data vanished; the map now draws a grey base layer),
+and channel titles that already contained the unit were suffixed again ("Median (Months)
+(Months)"; units now travel only in `Channel.unit`).
 
 ### Lightweight hexagonal architecture, selective DDD
 
@@ -393,11 +436,13 @@ plan can be edited and rerun. Filters are chosen rather than typed where the reg
 fixed list (country dropdown with trial counts, phase and status chips, year selects) and
 suggested elsewhere (drug, condition, sponsor), from `GET /api/options`; active filters show as
 removable chips. For a single trial it shows the trial used, with links, and lets the user
-switch to another trial the name matched. Refusals and "no posted results" appear as neutral
-notices, not errors, and replace the previous chart.
+switch to another trial the name matched. Tabs above each chart switch between the answer's
+views (e.g. Bars / Map / Donut). Refusals and "no posted results" appear as neutral notices, not
+errors, and replace the previous chart.
 
 Rendering knows nothing about questions: it maps `type` + `encoding` to Vega-Lite (bars with
-optional error bars, time series, histograms, scatter) or Cytoscape (networks), and shows the
+optional error bars, stacked bars, heatmaps, maps, donuts, lines, forest plots, time series,
+histograms, scatter) or Cytoscape (networks), and shows the
 citations of whatever datum is clicked. That it renders every chart kind from the spec alone is
 the evidence that the spec is renderable without guessing. Using it found two issues: one in
 the renderer (pre-binned histograms need `bin: {binned: true}` in Vega-Lite) and one in the
@@ -446,6 +491,10 @@ uv provisions the interpreter locally and the Docker image is `python:3.14-slim`
 - The evaluation covers English questions; other languages are untested.
 - A trial name matching several trials with results is resolved to the largest; it is a rule,
   not knowledge of which is the "main" trial, so the alternatives are always shown.
+- Alternative views repeat their rows' citations, so responses grow by about half to two
+  thirds (grouped bars 59 KB, of which 39 KB alternatives; a melanoma sponsor–drug network
+  428 KB, of which 205 KB). With more time: views would reference the primary's rows.
+- The map shows the countries of the bar chart (the top 15 by default), not every country.
 - Single-trial charts show one value scale (the first selected outcome's measure and unit; the
   rest is listed in notes) and the 15 most frequent adverse events; results are not compared
   across trials.
@@ -504,6 +553,8 @@ backend/
       facets.py                      a Trial's values per dimension/entity/measure, with evidence
       charts/                        one builder per plan kind → Visualization
       visualization.py               output spec: chart types, channels, citations
+      charts/views.py                alternative views derived from a primary chart's rows
+      geography.py, country_codes.json   registry country names -> ISO 3166-1 numeric codes
       results.py                     a trial's posted outcome measures and adverse events
     application/
       ports.py                       TrialSource port, TrialSearchResult
@@ -522,7 +573,7 @@ backend/
                                    live API checks (-m live); planner evaluation (-m llm)
   Dockerfile
 frontend/                          React + TypeScript (Vite): generic spec renderer
-  src/charts/toVegaLite.ts         spec → Vega-Lite
+  src/charts/toVegaLite.ts         spec → Vega-Lite (map shapes from world-atlas, bundled)
   src/components/                  chart, network, citations, meta
   Dockerfile, nginx.conf           static build behind nginx, /api proxied to the API
 docker-compose.yml

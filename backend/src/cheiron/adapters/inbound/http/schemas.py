@@ -259,6 +259,12 @@ class VisualizationOut(BaseModel):
     )
 
 
+class ViewOut(VisualizationOut):
+    """Another chart form of the same data; its notes are specific to this form."""
+
+    notes: list[str]
+
+
 class CohortMeta(BaseModel):
     label: str
     matched: int = Field(description="Trials matching the cohort's filter at ClinicalTrials.gov.")
@@ -294,6 +300,9 @@ class Meta(BaseModel):
 
 class VisualizationResponse(BaseModel):
     visualization: VisualizationOut
+    alternatives: list[ViewOut] = Field(
+        default_factory=list, description="The same data in other chart forms, computed from the same rows."
+    )
     meta: Meta
 
     @classmethod
@@ -308,6 +317,10 @@ class VisualizationResponse(BaseModel):
         viz = result.visualization
         return cls(
             visualization=VisualizationOut(type=viz.type, title=viz.title, encoding=viz.encoding, data=viz.data),
+            alternatives=[
+                ViewOut(type=v.type, title=v.title, encoding=v.encoding, data=v.data, notes=list(v.notes))
+                for v in result.alternatives
+            ],
             meta=Meta(
                 query=query,
                 interpretation=interpretation,

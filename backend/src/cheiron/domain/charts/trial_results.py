@@ -87,7 +87,7 @@ def _outcomes(plan: TrialResults, results: PostedResults, name: str) -> Visualiz
     if other_units:
         notes.append(f"Also matching, in other units and not shown: {'; '.join(other_units)}.")
 
-    value_title = f"{label(first.measure)} ({first.unit})"
+    value_title = label(first.measure)  # the unit travels in Channel.unit, not in the title
     encoding = {
         "x": Channel("outcome", FieldType.NOMINAL, "Outcome", order=tuple(o.label for o in shown)),
         "y": Channel("value", FieldType.QUANTITATIVE, value_title, unit=first.unit),

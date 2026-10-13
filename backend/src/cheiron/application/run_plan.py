@@ -8,6 +8,7 @@ from cheiron.application.trial_lookup import NoPostedResults, choose_trial
 from cheiron.domain.analysis import AnalysisPlan, TrialResults, needs_sites
 from cheiron.domain.charts import DEFAULT_MAX_CITATIONS, build_visualization
 from cheiron.domain.charts.trial_results import build_trial_results
+from cheiron.domain.charts.views import alternative_views
 from cheiron.domain.trial_filter import TrialFilter
 from cheiron.domain.visualization import Visualization
 
@@ -44,6 +45,8 @@ class PlanResult:
     notes: tuple[str, ...]
     """Notes about data retrieval, complementing the visualization's own notes."""
     trial: TrialReport | None = None
+    alternatives: tuple[Visualization, ...] = ()
+    """The same data in other chart forms (charts.views)."""
 
 
 async def run_plan(
@@ -77,7 +80,7 @@ async def run_plan(
             "A country filter keeps trials with at least one site in that country, "
             "so multinational trials are included.",
         )
-    return PlanResult(visualization, reports, notes)
+    return PlanResult(visualization, reports, notes, alternatives=alternative_views(visualization))
 
 
 async def _run_trial_results(plan: TrialResults, source: Registry) -> PlanResult:
@@ -88,9 +91,11 @@ async def _run_trial_results(plan: TrialResults, source: Registry) -> PlanResult
     if results is None:
         raise NoPostedResults(nct_id, choice.chosen.title if choice else None)
     note = choice.note(plan.trial) if choice else None
+    visualization = build_trial_results(plan, results)
     return PlanResult(
-        build_trial_results(plan, results),
+        visualization,
         cohorts=(),
         notes=(note,) if note else (),
         trial=TrialReport(results.nct_id, results.title, choice.alternatives if choice else ()),
+        alternatives=alternative_views(visualization),
     )

@@ -33,7 +33,7 @@ def test_primary_outcomes_by_group_with_intervals() -> None:
         {"outcome": "Overall Survival", "group": "Pembrolizumab", "value": None, "lower": None, "upper": None},
         {"outcome": "Overall Survival", "group": "Control", "value": 11.3, "lower": 8.7, "upper": 15.1},
     ]
-    assert viz.encoding["y"].title == "Median (Months)"
+    assert (viz.encoding["y"].title, viz.encoding["y"].unit) == ("Median", "Months")
     assert {"y_lower", "y_upper", "series"} <= set(viz.encoding)
 
 
@@ -68,7 +68,7 @@ def test_a_named_outcome_is_selected_by_title_words() -> None:
 
     assert viz.title == "Outcomes matching 'response rate' — NCT02578680"
     assert [r["value"] for r in viz.data] == [47.6, 18.9]
-    assert viz.encoding["y"].title == "Number (Percentage of Participants)"
+    assert (viz.encoding["y"].title, viz.encoding["y"].unit) == ("Number", "Percentage of Participants")
     assert "y_lower" not in viz.encoding
 
 
