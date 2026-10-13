@@ -23,13 +23,14 @@ from cheiron.domain.analysis import (
     Dimension,
     Distribution,
     Entity,
+    Link,
     Measure,
     ResultFocus,
     TrialResults,
 )
+from cheiron.domain.membership import MentionRole
 from cheiron.domain.trial import Phase, Status, StudyType
 from cheiron.domain.trial_filter import TrialFilter
-from cheiron.domain.membership import MentionRole
 from cheiron.domain.visualization import STUDY_URL, Channel, ChartType, Citations, Evidence
 
 MAX_TRIALS_LIMIT = 10_000
@@ -130,9 +131,16 @@ class CoOccurrenceIn(_PlanIn):
     target: Entity
     max_nodes: int = Field(30, ge=2, le=200)
     min_shared_trials: int = Field(1, ge=1, description="Hide links shared by fewer trials.")
+    link: Link = Field(
+        Link.SAME_TRIAL,
+        description="drug <-> drug only: same_arm links drugs given together in one arm (combinations), "
+        "different_arms drugs only in different arms (comparisons); same_trial any two on the same trial.",
+    )
 
     def to_domain(self) -> CoOccurrence:
-        return CoOccurrence(self.cohort.to_domain(), self.source, self.target, self.max_nodes, self.min_shared_trials)
+        return CoOccurrence(
+            self.cohort.to_domain(), self.source, self.target, self.max_nodes, self.min_shared_trials, self.link
+        )
 
 
 class DistributionIn(_PlanIn):
@@ -188,6 +196,7 @@ def plan_from_domain(plan: AnalysisPlan) -> AnyPlanIn:
                 target=plan.target,
                 max_nodes=plan.max_nodes,
                 min_shared_trials=plan.min_shared_trials,
+                link=plan.link,
             )
         case Distribution():
             return DistributionIn(kind="distribution", cohort=CohortIn.from_domain(plan.cohort), measure=plan.measure, bins=plan.bins)

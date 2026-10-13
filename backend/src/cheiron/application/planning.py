@@ -30,6 +30,7 @@ from cheiron.domain.analysis import (
     Dimension,
     Distribution,
     Entity,
+    Link,
     Measure,
     ResultFocus,
     TrialResults,
@@ -122,6 +123,10 @@ class PlanDraft(_Draft):
     top_n: int | None = Field(description="count_by: keep the N most frequent values, if the question asks for a top N.")
     source: Entity | None = Field(description="co_occurrence: first node kind.")
     target: Entity | None = Field(description="co_occurrence: second node kind; equal to source for e.g. drug-drug.")
+    link: Link | None = Field(
+        description="co_occurrence drug-drug only: same_arm for drugs combined (given together), different_arms for "
+        "drugs compared against each other, same_trial otherwise; null for other networks."
+    )
     measure: Measure | None = Field(description="distribution: the numeric attribute to histogram.")
     x: Measure | None = Field(description="correlation: horizontal measure.")
     y: Measure | None = Field(description="correlation: vertical measure.")
@@ -333,7 +338,7 @@ def _build(draft: PlanDraft, cohorts: tuple[Cohort, ...], problems: list[str]) -
             case "count_by":
                 return CountBy(cohorts, draft.dimension, draft.split_by, draft.top_n)
             case "co_occurrence":
-                return CoOccurrence(cohorts[0], draft.source, draft.target)
+                return CoOccurrence(cohorts[0], draft.source, draft.target, link=draft.link or Link.SAME_TRIAL)
             case "distribution":
                 return Distribution(cohorts[0], draft.measure)
             case "correlation":

@@ -65,7 +65,7 @@ cd frontend && npm install && npm run dev       # UI: :5173, /api는 :8000으로
 cd backend
 uv run pytest            # 오프라인: 단위 테스트, 녹화한 API 응답, 가짜 소스를 쓴 HTTP 테스트
 uv run pytest -m live    # 실제 ClinicalTrials.gov API에 대한 계약 확인과 교차 검증
-uv run --env-file ../.env pytest -m llm   # 실제 모델로 플래너(19개 사례)와 언급 판정(13개) 평가
+uv run --env-file ../.env pytest -m llm   # 실제 모델로 플래너(21개 사례)와 언급 판정(13개) 평가
 cd ../frontend && npm run build && npm run lint   # 타입 검사, 빌드, lint
 ```
 
@@ -136,6 +136,7 @@ cd ../frontend && npm run build && npm run lint   # 타입 검사, 빌드, lint
 |---|---|---|
 | `plan.kind` | `count_by` \| `co_occurrence` \| `distribution` \| `correlation` | 필수. 나머지 필드를 정한다([AnalysisPlan](#모든-질문을-하나의-문법으로-analysisplan) 참고) |
 | `plan.cohorts` / `plan.cohort` | 코호트: `{ label, filter }` | `count_by`: 이름이 겹치지 않는 1–5개. 나머지: 1개 |
+| `plan.link` | `same_trial` \| `same_arm` \| `different_arms` | `co_occurrence`의 약물 ↔ 약물에만, 기본값 `same_trial`. `same_arm` = 병용, `different_arms` = 비교 |
 | `filter.condition`, `.intervention`, `.sponsor` | 문자열 ≤ 200 | 선택, 자유 텍스트. 동의어는 ClinicalTrials.gov가 처리한다 |
 | `filter.country` | 문자열 ≤ 100 | 선택. 흔한 변형 표기(`USA`, `UK`)도 찾는다 |
 | `filter.phases`, `.statuses` | 등록부 코드 목록 (`PHASE3`, `RECRUITING`, …) | 선택. 하나라도 해당하면 포함 |
@@ -188,7 +189,7 @@ cd ../frontend && npm run build && npm run lint   # 타입 검사, 빌드, lint
 | `time_series` | `x` (temporal, `time_unit: "year"`), `y`, 선택적 `series` | 연도당 한 행, 빈 연도는 0으로 채움 |
 | `histogram` | `x` (`bin_start`), `x2` (`bin_end`), `y` | 구간당 한 행. 구간은 `[bin_start, bin_end)`. 마지막 구간은 열려 있을 수 있다(`bin_end: null`) |
 | `scatter_plot` | `x`, `y`, `tooltip` | 시험당 한 행(`nct_id`, `title`, 두 측정값). 최댓값이 중앙값의 10배 이상인 축은 `scale: "symlog"`. `notes`가 스피어먼 순위 상관계수를 문장으로 알려 준다 |
-| `network_graph` | `node_id`, `node_label`, `node_size`, `node_color` (군집), `node_shape` (개체 종류), `edge_source`, `edge_target`, `edge_weight` (공유 시험 수), `edge_strength` (연관 강도) | `{ "nodes": [...], "edges": [...] }`. 노드에는 `community`(군집 이름 또는 null), `anchor`(불리언), `partners`(연결된 노드 수), 연결선에는 `association`(자카드 지수, 0–1) |
+| `network_graph` | `node_id`, `node_label`, `node_size`, `node_color` (군집), `node_shape` (개체 종류), `node_category` (스폰서 분류, 스폰서 네트워크), `edge_source`, `edge_target`, `edge_weight` (공유 시험 수), `edge_strength` (연관 강도), `edge_style` (만나는 방식) | `{ "nodes": [...], "edges": [...] }`. 노드에는 `community`(군집 이름 또는 null), `anchor`(불리언), `partners`(연결된 노드 수), 스폰서면 `sponsor_class`. 연결선에는 `association`(자카드 지수, 0–1)과 `relation` 및 그 수: 약물 ↔ 약물은 `combined_trials` / `compared_trials`(`combined`, `compared`, `unknown`), 스폰서 ↔ X는 `lead_trials` / `collaborator_trials`(`lead`, `collaborator`) |
 
 대체 보기(`alternatives`)는 아래 유형을 더한다. 각 항목에는 자체 `notes`가 있다.
 
@@ -325,7 +326,7 @@ Opdivo"라고 인용했다(질문에 없는 문구). 이 필터를 조용히 빼
 
 | 모델 | 결과 | 플래너 지연 시간 |
 |---|---|---|
-| `gpt-5.4-mini`, reasoning `low` (기본값) | 첫 평가 세트 17/17 두 번, 현재 세트 19/19 | 약 1.5–2.2초 |
+| `gpt-5.4-mini`, reasoning `low` (기본값) | 첫 평가 세트 17/17 두 번, 현재 세트 21/21 세 번 | 약 1.5–2.2초 |
 | `gpt-4.1-mini` | 첫 평가 세트 16/17 (Keytruda vs Opdivo 1회 실패, 재실행 3/3 통과) | 약 1.8–4.8초 |
 
 ### AI 설계: 시험이 그 단어를 언급하는 이유
@@ -370,7 +371,7 @@ Opdivo"라고 인용했다(질문에 없는 문구). 이 필터를 조용히 빼
 | `CountBy` | `dimension = start_year` | `time_series` | "How many trials started each year for pembrolizumab?" |
 | `CountBy` | 코호트 2–5개 | `grouped_bar_chart` | "Compare phases for pembrolizumab vs nivolumab." |
 | `CountBy` | 코호트 1개 + `split_by` | `grouped_bar_chart` | "Phases by sponsor class for pembrolizumab trials." |
-| `CoOccurrence` | `source`, `target` 개체 | `network_graph` | "Network of sponsors ↔ drugs for breast cancer." |
+| `CoOccurrence` | `source`, `target` 개체, `link` | `network_graph` | "Network of sponsors ↔ drugs for breast cancer.", "Which drugs are combined with pembrolizumab?" (`link = same_arm`) |
 | `Distribution` | `measure` | `histogram` | "How large are pembrolizumab trials?" |
 | `Correlation` | `x`, `y` 측정값 | `scatter_plot` | "Do longer trials enrol more patients?" |
 | `TrialResults` | `trial`(NCT ID 또는 이름), `focus`, 선택적 `outcome` | 구간이 있는 `grouped_bar_chart` | "What were the results of KEYNOTE-189?", "Side effects in CheckMate 227?" |
@@ -406,8 +407,23 @@ Opdivo"라고 인용했다(질문에 없는 문구). 이 필터를 조용히 빼
   연결인 펨브롤리주맙 + carboplatin(256건)은 0.13인 반면, leucovorin + oxaliplatin(28건, 0.43)과
   carboplatin + paclitaxel(135건, 0.40)이 가장 높다.
 
+- **만나는 방식**: 같은 시험의 두 약은 함께 쓰일 수도, 서로 비교될 수도 있다. 스폰서도 시험을 직접
+  운영할 수도, 지원만 할 수도 있다. 군(arm)이 이를 알려 준다. 펨브롤리주맙 시험 2,974건 중 2,821건이
+  군마다 약을 등록한다(`ArmGroupInterventionName`, "Drug: 이름"). carboplatin + pemetrexed는 118건 중
+  117건에서 같은 군에 있지만, docetaxel + 펨브롤리주맙은 75건 중 35건, nivolumab + 펨브롤리주맙은 104건
+  중 41건에서 서로 다른 군에만 있다(펨브롤리주맙 대 도세탁셀 비교). 그래서 약물 연결선은
+  `combined_trials`와 `compared_trials`를 함께 싣고, 인용은 해당 군을 원문 그대로 인용하며
+  ("Experimental: Pembrolizumab + Carboplatin", "Drug: Carboplatin"), 군집은 병용을 기준으로 계산한다.
+  `link`로 병용만(`same_arm`, "Drug combination network") 또는 비교만(`different_arms`) 그린 네트워크도
+  만들 수 있고, 플래너가 질문의 표현("combined with", "versus")으로 고른다. 펨브롤리주맙 네트워크의
+  연결선 120개 중 105개는 주로 병용, 15개는 주로 비교다. 스폰서는 역할별로 센다. 흑색종에서 Merck ↔
+  펨브롤리주맙은 86건인데 Merck가 주 스폰서인 것은 26건, 협력은 60건이다(다른 기관이 운영하고 Merck가
+  지원). BMS ↔ nivolumab은 27건과 51건이다. 스폰서 노드에는 분류(제약사, NIH, 기타)가 붙는다. 군 필드를
+  더해 시험 한 페이지가 17% 커진다(1,000건당 1.92 → 2.25 MB).
+
 데모는 노드를 군집별로 색칠하고, 개체 종류별로 모양을 다르게 하고, 기준점은 진하게 그린다.
-연결선 두께는 공유 시험 수, 진하기는 연관 강도를 나타내고 범례도 붙는다. 그래프의 마우스 휠
+연결선 두께는 공유 시험 수, 진하기는 연관 강도를 나타내고 범례도 붙는다. 병용이거나 스폰서가 운영하면
+실선, 비교거나 스폰서가 협력하면 점선, 군 정보가 없으면 점점선이다. 스폰서 노드는 분류 색 테두리를 단다. 그래프의 마우스 휠
 확대는 껐다. 화면 너비를 채운 그래프가 페이지 스크롤을 가로채서 그 아래 범례와 인용에 닿을 수
 없었기 때문이다.
 
@@ -655,6 +671,9 @@ Python 3.14 이상을 대상으로 한다(기본으로 지연 평가되는 어�
 - 군집은 표시된 부분 그래프(기본 상위 30개 노드)로 계산하고 모듈러리티도 높지 않다(예시에서
   Q ≈ 0.2). 군집은 경향이지 엄격한 분할이 아니다. 이름 변형("Fluorouracil", "5-fluorouracil")은 별도
   노드로 남고 한 군집에 들어갈 수 있다.
+- 군은 구조로만 읽는다. 택일을 적은 군("pembrolizumab 또는 nivolumab")도 병용으로 세며, nivolumab +
+  펨브롤리주맙의 "병용" 63건 일부가 이런 경우로 보인다. 스폰서 역할은 스폰서 ↔ 다른 개체 네트워크에서만
+  나누고, 스폰서끼리는 나누지 않는다.
 - 단일 시험 차트는 값 척도를 하나만 보여주고(처음 선택된 결과 지표의 측정 방식과 단위. 나머지는
   안내에 나열), 가장 잦은 이상반응 15개를 보여준다. 시험 사이의 결과 비교는 하지 않는다.
 
@@ -680,7 +699,7 @@ _작성자가 마무리할 예정._ 지금까지:
   돌려 살폈다. 위에 적은 예정 시작일과 국가 변형 표기 동작이 이때 드러났다.
 - **브라우저에서 처음부터 끝까지:** 데모의 모든 예시를 React 화면에서 실제 API로 실행하고, 데이터를
   클릭해 인용도 확인했다. 히스토그램 렌더링 버그와 비좁은 네트워크 배치를 이렇게 찾아 고쳤다.
-- **플래너 평가:** `pytest -m llm`이 실제 모델로 19개 사례를 돌려 계획 종류, 매개변수, 정확한
+- **플래너 평가:** `pytest -m llm`이 실제 모델로 플래너 사례 21개를 돌려 계획 종류, 매개변수, 정확한
   필터(필터가 하나만 더해져도 실패)와 거절을 확인한다. 모델별 결과는
   [AI 설계](#ai-설계-질문에-근거한-계획)에 있다. 오프라인 테스트는 근거 확인 규칙, 수정 단계,
   OpenAI 어댑터(가짜 전송으로 요청 형태와 파싱), `/api/visualize`의 모든 상태 코드를 다룬다.

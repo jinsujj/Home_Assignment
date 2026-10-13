@@ -1,5 +1,6 @@
 from cheiron.adapters.outbound.ctgov.mapper import to_texts, to_trial
 from cheiron.domain.trial import (
+    Arm,
     DateType,
     Intervention,
     InterventionType,
@@ -182,3 +183,11 @@ def test_date_types_say_whether_a_date_has_happened() -> None:
     mapped = to_trial({"protocolSection": {"identificationModule": {"nctId": "NCT1"}, "statusModule": status}})
 
     assert (mapped.start_date_type, mapped.completion_date_type) == (DateType.ESTIMATED, None)  # unknown types dropped
+
+
+def test_arms_keep_their_interventions_as_registered() -> None:
+    arms = {"armGroups": [{"label": "Pembrolizumab + Chemo", "interventionNames": ["Drug: Pembrolizumab", "Drug: Carboplatin"]}, {"interventionNames": ["Drug: X"]}]}
+
+    mapped = to_trial({"protocolSection": {"identificationModule": {"nctId": "NCT1"}, "armsInterventionsModule": arms}})
+
+    assert mapped.arms == (Arm("Pembrolizumab + Chemo", ("Drug: Pembrolizumab", "Drug: Carboplatin")),)  # unlabelled arms dropped

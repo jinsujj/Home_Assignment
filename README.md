@@ -62,7 +62,7 @@ cd frontend && npm install && npm run dev       # UI on :5173, proxies /api to :
 cd backend
 uv run pytest            # offline: unit tests, recorded API fixtures, HTTP tests with a fake source
 uv run pytest -m live    # contract checks and cross-checks against the real ClinicalTrials.gov API
-uv run --env-file ../.env pytest -m llm   # planner (19 cases) and mention judge (13) against the real model
+uv run --env-file ../.env pytest -m llm   # planner (21 cases) and mention judge (13) against the real model
 cd ../frontend && npm run build && npm run lint   # type-check, build, lint
 ```
 
@@ -133,6 +133,7 @@ least one site in that country (for pembrolizumab in South Korea, 335 of 389 are
 |---|---|---|
 | `plan.kind` | `count_by` \| `co_occurrence` \| `distribution` \| `correlation` | required; selects the other fields (see [AnalysisPlan](#one-grammar-for-every-question-analysisplan)) |
 | `plan.cohorts` / `plan.cohort` | cohort(s): `{ label, filter }` | `count_by`: 1–5 cohorts with unique labels; others: one cohort |
+| `plan.link` | `same_trial` \| `same_arm` \| `different_arms` | `co_occurrence` drug ↔ drug only, default `same_trial`; `same_arm` = combinations, `different_arms` = comparisons |
 | `filter.condition`, `.intervention`, `.sponsor` | string ≤ 200 | optional free text; synonyms resolved by ClinicalTrials.gov |
 | `filter.country` | string ≤ 100 | optional; common variants resolved (`USA`, `UK`) |
 | `filter.phases`, `.statuses` | list of registry codes (`PHASE3`, `RECRUITING`, …) | optional; any of |
@@ -185,7 +186,7 @@ category order to render, and `scale` is `null` (linear) or `"symlog"` (log-like
 | `time_series` | `x` (temporal, `time_unit: "year"`), `y`, optional `series` | one row per year, gaps filled with 0 |
 | `histogram` | `x` (`bin_start`), `x2` (`bin_end`), `y` | one row per bin; bins are `[bin_start, bin_end)`; the last bin may be open (`bin_end: null`) |
 | `scatter_plot` | `x`, `y`, `tooltip` | one row per trial (`nct_id`, `title`, both measures); an axis whose largest value is at least 10 times its median gets `scale: "symlog"`; `notes` state Spearman's rank correlation in words |
-| `network_graph` | `node_id`, `node_label`, `node_size`, `node_color` (cluster), `node_shape` (entity kind), `edge_source`, `edge_target`, `edge_weight` (shared trials), `edge_strength` (association) | `{ "nodes": [...], "edges": [...] }`; nodes carry `community` (cluster name or null), `anchor` (bool), `partners` (linked nodes); edges carry `association` (Jaccard, 0–1) |
+| `network_graph` | `node_id`, `node_label`, `node_size`, `node_color` (cluster), `node_shape` (entity kind), `node_category` (sponsor class, sponsor networks), `edge_source`, `edge_target`, `edge_weight` (shared trials), `edge_strength` (association), `edge_style` (how they meet) | `{ "nodes": [...], "edges": [...] }`; nodes carry `community` (cluster name or null), `anchor` (bool), `partners` (linked nodes) and, for sponsors, `sponsor_class`; edges carry `association` (Jaccard, 0–1), and `relation` with its counts: drug ↔ drug `combined_trials` / `compared_trials` (`combined`, `compared`, `unknown`), sponsor ↔ X `lead_trials` / `collaborator_trials` (`lead`, `collaborator`) |
 
 Alternative views (`alternatives`) add these types; each item also carries its own `notes`:
 
@@ -332,7 +333,7 @@ asserts the exact filters, so an added filter fails it, and refusals assert thei
 
 | Model | Result | Planner latency |
 |---|---|---|
-| `gpt-5.4-mini`, reasoning `low` (default) | 17/17 twice on the first suite; 19/19 on the current one | ~1.5–2.2 s |
+| `gpt-5.4-mini`, reasoning `low` (default) | 17/17 twice on the first suite; 21/21 three times on the current one | ~1.5–2.2 s |
 | `gpt-4.1-mini` | 16/17 on the first suite (Keytruda vs Opdivo failed once, passed 3/3 on rerun) | ~1.8–4.8 s |
 
 ### AI design: why a trial mentions a term
@@ -382,7 +383,7 @@ plan's shape, deterministically:
 | `CountBy` | `dimension = start_year` | `time_series` | "How many trials started each year for pembrolizumab?" |
 | `CountBy` | 2–5 cohorts | `grouped_bar_chart` | "Compare phases for pembrolizumab vs nivolumab." |
 | `CountBy` | 1 cohort + `split_by` | `grouped_bar_chart` | "Phases by sponsor class for pembrolizumab trials." |
-| `CoOccurrence` | `source`, `target` entity | `network_graph` | "Network of sponsors ↔ drugs for breast cancer." |
+| `CoOccurrence` | `source`, `target` entity, `link` | `network_graph` | "Network of sponsors ↔ drugs for breast cancer.", "Which drugs are combined with pembrolizumab?" (`link = same_arm`) |
 | `Distribution` | `measure` | `histogram` | "How large are pembrolizumab trials?" |
 | `Correlation` | `x`, `y` measures | `scatter_plot` | "Do longer trials enrol more patients?" |
 | `TrialResults` | `trial` (NCT ID or name), `focus`, optional `outcome` | `grouped_bar_chart` with intervals | "What were the results of KEYNOTE-189?", "Side effects in CheckMate 227?" |
@@ -420,8 +421,25 @@ Each network therefore makes three things explicit (`domain/charts/co_occurrence
   pembrolizumab + carboplatin (256 trials), scores 0.13, while leucovorin + oxaliplatin
   (28 trials, 0.43) and carboplatin + paclitaxel (135 trials, 0.40) score highest.
 
+- **How they meet**: two drugs on the same trial may be given together or compared against
+  each other, and a sponsor may run a trial or only support it. Arms say which: 2,821 of the 2,974
+  pembrolizumab trials list the drugs of each arm (`ArmGroupInterventionName`, "Drug: Name").
+  Carboplatin + pemetrexed share an arm in 117 of their 118 trials, while docetaxel +
+  pembrolizumab are only in different arms in 35 of 75 (pembrolizumab vs docetaxel) and
+  nivolumab + pembrolizumab in 41 of 104. Drug links therefore carry `combined_trials` and
+  `compared_trials`, their citations quote the arms ("Experimental: Pembrolizumab + Carboplatin",
+  "Drug: Carboplatin"), clusters follow combinations, and `link` makes a network of combinations
+  only (`same_arm`, "Drug combination network") or comparisons only (`different_arms`); the
+  planner picks it from the wording ("combined with", "versus"). Of pembrolizumab's 120 shown
+  links, 105 are mostly combined and 15 mostly compared. Sponsors are counted per role: in
+  melanoma, Merck ↔ pembrolizumab is 86 trials, Merck leading 26 and collaborating on 60 (others
+  run them, Merck supports); BMS ↔ nivolumab 27 and 51; sponsor nodes carry their class
+  (industry, NIH, other). Arm fields add 17% to a page of studies (1.92 → 2.25 MB per 1,000).
+
 The demo colours nodes by cluster, shapes them by entity kind, draws anchors dark, scales link
-width by shared trials and opacity by association, and adds a legend. It also disables wheel
+width by shared trials and opacity by association, and adds a legend. Links are solid where drugs
+are combined or the sponsor leads, dashed where they are compared or the sponsor collaborates,
+dotted where the arms do not say; sponsor nodes get a border in their class's colour. It also disables wheel
 zoom on the graph: a full-width graph captured page scrolling, so the legend and citations below
 it could not be reached.
 
@@ -688,6 +706,9 @@ uv provisions the interpreter locally and the Docker image is `python:3.14-slim`
 - Clusters are computed on the displayed subgraph (top 30 nodes by default) and modularity is
   modest (Q ≈ 0.2 on the examples): clusters are tendencies, not hard partitions. Name variants
   ("Fluorouracil", "5-fluorouracil") remain separate nodes and may land in one cluster.
+- Arms are read structurally: an arm offering alternatives ("pembrolizumab or nivolumab") counts
+  as a combination, which is likely part of nivolumab + pembrolizumab's 63 "combined" trials.
+  Sponsor roles are split for sponsor ↔ other networks, not between two sponsors.
 - Single-trial charts show one value scale (the first selected outcome's measure and unit; the
   rest is listed in notes) and the 15 most frequent adverse events; results are not compared
   across trials.
@@ -717,7 +738,7 @@ _To be completed by the author._ So far:
 - **End to end in a browser:** every example in the demo was run against the live API through
   the React UI, including clicking data to inspect citations; this is how the histogram
   rendering bug and the cramped network layout were found and fixed.
-- **Planner evaluation:** `pytest -m llm` runs 19 cases against the real model and asserts the
+- **Planner evaluation:** `pytest -m llm` runs 21 planner cases against the real model and asserts the
   plan kind, its parameters and the exact filters (so an added filter fails), plus refusals;
   results per model are in [AI design](#ai-design-grounding-the-planner-in-the-question).
   Offline tests cover grounding rules, the correction round, the OpenAI adapter (request shape and

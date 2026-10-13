@@ -504,3 +504,12 @@ async def test_notes_that_count_trials_come_with_their_citations() -> None:
     assert cited["note"] == "1 of 2 trials have no registered phase and are not shown." and cited["note"] in meta["notes"]
     assert [i["nct_id"] for i in cited["citations"]["items"]] == ["NCT2"]
     assert cited["citations"]["nct_ids"] is None  # listed only with all_citation_ids
+
+
+async def test_arm_links_are_only_for_drug_networks() -> None:
+    plan = {"kind": "co_occurrence", "cohort": PEMBRO, "source": "sponsor", "target": "drug", "link": "same_arm"}
+
+    response = await client_for(FakeSource()).post("/api/plans", json={"plan": plan})
+
+    assert response.status_code == 422
+    assert "drug-drug" in response.text

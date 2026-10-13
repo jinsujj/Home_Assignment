@@ -22,6 +22,7 @@ from cheiron.domain.facets import (
     OFFICIAL_TITLE,
 )
 from cheiron.domain.trial import (
+    Arm,
     DateType,
     Intervention,
     InterventionType,
@@ -64,6 +65,8 @@ FIELDS = (
     "InterventionType",
     "InterventionName",
     "InterventionOtherName",
+    "ArmGroupLabel",
+    "ArmGroupInterventionName",
     "LeadSponsorName",
     "LeadSponsorClass",
     "CollaboratorName",
@@ -148,6 +151,11 @@ def to_trial(study: dict[str, Any]) -> Trial:
         ),
         lead_sponsor=lead_sponsor,
         collaborators=collaborators,
+        arms=tuple(
+            Arm(label=arm["label"], intervention_names=tuple(arm.get("interventionNames", [])))
+            for arm in protocol.get("armsInterventionsModule", {}).get("armGroups", [])
+            if arm.get("label")
+        ),
         countries=tuple(dict.fromkeys(loc["country"] for loc in locations if loc.get("country"))),
         investigators=_investigators(
             contacts.get("overallOfficials", []),

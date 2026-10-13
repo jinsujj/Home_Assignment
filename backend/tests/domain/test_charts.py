@@ -222,7 +222,7 @@ def test_drug_network_weights_edges_by_shared_trials() -> None:
     assert viz.data["edges"][0]["citations"].items[1].excerpt == "interventions.name: A; interventions.name: b"
     assert set(viz.encoding) == {
         "node_id", "node_label", "node_size", "node_color", "node_shape",
-        "edge_source", "edge_target", "edge_weight", "edge_strength",
+        "edge_source", "edge_target", "edge_weight", "edge_strength", "edge_style",
     }
 
 

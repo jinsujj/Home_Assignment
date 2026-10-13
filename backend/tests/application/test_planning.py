@@ -9,7 +9,7 @@ from cheiron.application.planning import (
     UnsupportedQuestion,
     ground,
 )
-from cheiron.domain.analysis import CoOccurrence, CountBy, Dimension, Entity, ResultFocus, TrialResults
+from cheiron.domain.analysis import CoOccurrence, CountBy, Dimension, Entity, Link, ResultFocus, TrialResults
 from cheiron.domain.trial import Phase, Status
 from cheiron.domain.trial_filter import TrialFilter
 from tests.application.planning_factories import cohort, draft, text
@@ -203,6 +203,25 @@ def test_labels_default_to_the_main_filter() -> None:
     plan = ground(proposal, Question("drugs combined in melanoma trials")).plan
 
     assert plan == CoOccurrence(plan.cohort.__class__("melanoma", TrialFilter(condition="melanoma")), Entity.DRUG, Entity.DRUG)
+
+
+def test_a_combination_question_links_drugs_given_together() -> None:
+    proposal = draft(
+        kind="co_occurrence", dimension=None, source="drug", target="drug", link="same_arm",
+        cohorts=[cohort("melanoma", condition=text("melanoma"))],
+    )
+
+    assert ground(proposal, Question("drugs combined in melanoma trials")).plan.link is Link.SAME_ARM
+
+
+def test_arm_links_on_other_networks_are_problems_to_correct() -> None:
+    proposal = draft(
+        kind="co_occurrence", dimension=None, source="sponsor", target="drug", link="same_arm",
+        cohorts=[cohort("melanoma", condition=text("melanoma"))],
+    )
+
+    with pytest.raises(DraftRejected, match="drug-drug"):
+        ground(proposal, Question("sponsors and drugs in melanoma trials"))
 
 
 # --- trial_results -------------------------------------------------------------------------

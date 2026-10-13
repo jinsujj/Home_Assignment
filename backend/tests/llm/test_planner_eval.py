@@ -22,6 +22,7 @@ from cheiron.domain.analysis import (
     Dimension,
     Distribution,
     Entity,
+    Link,
     Measure,
     ResultFocus,
     TrialResults,
@@ -102,19 +103,31 @@ CASES = [
     (
         "Show a network of sponsors and drugs for melanoma trials.",
         CoOccurrence,
-        {"source": Entity.SPONSOR, "target": Entity.DRUG},
+        {"source": Entity.SPONSOR, "target": Entity.DRUG, "link": Link.SAME_TRIAL},
         [TrialFilter(condition="melanoma")],
     ),
     (
         "Which drugs frequently co-occur in combination studies for pancreatic cancer?",
         CoOccurrence,
-        {"source": Entity.DRUG, "target": Entity.DRUG},
+        {"source": Entity.DRUG, "target": Entity.DRUG, "link": Link.SAME_ARM},
         [TrialFilter(condition="pancreatic cancer")],
+    ),
+    (
+        "Which drugs frequently co-occur in combination studies (drug ↔ drug network)?",
+        CoOccurrence,
+        {"source": Entity.DRUG, "target": Entity.DRUG, "link": Link.SAME_ARM},
+        [TrialFilter()],
+    ),
+    (
+        "Which drugs are compared against pembrolizumab in head-to-head trials?",
+        CoOccurrence,
+        {"source": Entity.DRUG, "target": Entity.DRUG, "link": Link.DIFFERENT_ARMS},
+        [TrialFilter(intervention="pembrolizumab")],
     ),
     (
         "Which hospitals run pembrolizumab trials together?",
         CoOccurrence,
-        {"source": Entity.SITE, "target": Entity.SITE},
+        {"source": Entity.SITE, "target": Entity.SITE, "link": Link.SAME_TRIAL},
         [TrialFilter(intervention="pembrolizumab")],
     ),
     (

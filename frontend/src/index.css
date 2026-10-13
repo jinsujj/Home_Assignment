@@ -627,3 +627,24 @@ pre {
   color: var(--error);
   font-size: 12px;
 }
+
+.line-swatch {
+  display: inline-block;
+  width: 22px;
+  margin-right: 5px;
+  border-top: 2px solid var(--muted);
+  vertical-align: middle;
+}
+
+.line-swatch.dashed {
+  border-top-style: dashed;
+}
+
+.line-swatch.dotted {
+  border-top-style: dotted;
+}
+
+.swatch.classed {
+  border: 3px solid;
+  background: var(--card);
+}

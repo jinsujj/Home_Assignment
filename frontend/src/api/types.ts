@@ -62,6 +62,8 @@ export interface NetworkNode {
   community: string | null
   anchor: boolean
   partners: number
+  /** Sponsor nodes of sponsor networks: INDUSTRY, NIH, OTHER_GOV, OTHER, ... */
+  sponsor_class?: string | null
   citations: Citations
 }
 
@@ -70,6 +72,14 @@ export interface NetworkEdge {
   target: string
   trial_count: number
   association: number
+  /** Drug-drug links: trials giving both in one arm, and trials giving them only in different arms. */
+  combined_trials?: number
+  compared_trials?: number
+  /** Sponsor links: trials the sponsor leads, and trials it collaborates on. */
+  lead_trials?: number
+  collaborator_trials?: number
+  /** Which way dominates: combined / compared / unknown, or lead / collaborator. */
+  relation?: string
   citations: Citations
 }
 

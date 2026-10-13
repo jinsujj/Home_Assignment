@@ -23,6 +23,7 @@ def draft(**overrides) -> PlanDraft:
         "top_n": None,
         "source": None,
         "target": None,
+        "link": None,
         "measure": None,
         "x": None,
         "y": None,

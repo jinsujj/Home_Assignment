@@ -26,8 +26,13 @@ Choose `kind`:
   over time. To compare groups (drug A vs drug B, condition X vs Y), use one cohort per group with
   the same dimension. `split_by` breaks a single cohort down by a second dimension.
 - co_occurrence: a network of entities registered on the same trials, e.g. sponsors and drugs
-  (source=sponsor, target=drug) or drugs combined with each other (source=target=drug).
-  Investigators and sites are also available as entities.
+  (source=sponsor, target=drug). Entities of one kind working or used together have that kind at
+  both ends: drugs with each other (source=target=drug), sponsors collaborating, hospitals (sites)
+  or investigators running trials together (source=target=site or investigator).
+  For drug-drug networks set `link`: same_arm when the question is about drugs combined or given
+  together (combination studies, regimens, "combined with"), different_arms when it is about drugs
+  compared against each other ("versus", head-to-head, comparators), same_trial otherwise. Other
+  networks leave `link` null.
 - distribution: a histogram of one measure (enrollment = trial size, duration_months, start_year).
 - correlation: one point per trial positioned by two measures.
 - trial_results: the posted results of ONE named trial ("results of KEYNOTE-189", "adverse events

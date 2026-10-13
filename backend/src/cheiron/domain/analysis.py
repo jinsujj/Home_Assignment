@@ -82,6 +82,14 @@ class CountBy:
             raise ValueError("top_n does not apply to start_year; narrow the year range instead")
 
 
+class Link(StrEnum):
+    """What makes two drugs linked in a drug <-> drug network."""
+
+    SAME_TRIAL = "same_trial"  # registered on the same trial
+    SAME_ARM = "same_arm"  # given together in one arm: a combination
+    DIFFERENT_ARMS = "different_arms"  # only in different arms: compared, or alternatives
+
+
 @dataclass(frozen=True)
 class CoOccurrence:
     """Network of entities registered on the same trial.
@@ -95,12 +103,15 @@ class CoOccurrence:
     target: Entity
     max_nodes: int = 30
     min_shared_trials: int = 1
+    link: Link = Link.SAME_TRIAL
 
     def __post_init__(self) -> None:
         if not 2 <= self.max_nodes <= 200:
             raise ValueError("max_nodes must be between 2 and 200")
         if self.min_shared_trials < 1:
             raise ValueError("min_shared_trials must be at least 1")
+        if self.link is not Link.SAME_TRIAL and not (self.source is Entity.DRUG and self.target is Entity.DRUG):
+            raise ValueError(f"link {self.link} needs a drug-drug network (source = target = drug)")
 
     @property
     def cohorts(self) -> tuple[Cohort, ...]:

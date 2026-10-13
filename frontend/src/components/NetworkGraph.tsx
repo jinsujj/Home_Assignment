@@ -2,12 +2,28 @@ import cytoscape from 'cytoscape'
 import { useEffect, useRef } from 'react'
 import type { NetworkData, Selection, Visualization } from '../api/types'
 
-// Colour = cluster (node_color), shape = entity kind (node_shape), dark = anchor,
-// edge width = shared trials (edge_weight), edge opacity = association (edge_strength).
+// Colour = cluster (node_color), shape = entity kind (node_shape), dark = anchor, border =
+// sponsor class (node_category); edge width = shared trials (edge_weight), opacity = association
+// (edge_strength), line style = how the two meet (edge_style).
 const PALETTE = ['#2f6fdd', '#e0782f', '#2a9d6f', '#9b5de5', '#d64550', '#c9a227', '#1fa3b8', '#8a6d3b']
 const NO_CLUSTER = '#b8c0c8'
 const ANCHOR = '#1d2228'
 const SHAPES = ['ellipse', 'round-rectangle'] as const
+const LINE: Record<string, { style: 'solid' | 'dashed' | 'dotted'; legend: string }> = {
+  combined: { style: 'solid', legend: 'combined in one arm' },
+  compared: { style: 'dashed', legend: 'only in different arms (compared)' },
+  unknown: { style: 'dotted', legend: 'arms do not say' },
+  lead: { style: 'solid', legend: 'sponsor leads' },
+  collaborator: { style: 'dashed', legend: 'sponsor collaborates' },
+}
+const SPONSOR_CLASS: Record<string, { color: string; legend: string }> = {
+  INDUSTRY: { color: '#b45309', legend: 'industry' },
+  NIH: { color: '#15803d', legend: 'NIH' },
+  OTHER_GOV: { color: '#0e7490', legend: 'other government' },
+  FED: { color: '#0e7490', legend: 'US federal' },
+  OTHER: { color: '#6b7280', legend: 'university, hospital, other' },
+}
+const OTHER_CLASS = { color: '#a1a1aa', legend: 'other' }
 
 interface Props {
   visualization: Visualization
@@ -28,6 +44,8 @@ export function NetworkGraph({ visualization, onSelect }: Props) {
   const container = useRef<HTMLDivElement>(null)
   const { clusters, kinds } = legendOrder(visualization)
   const { nodes } = visualization.data as NetworkData
+  const lines = (visualization.encoding.edge_style?.order ?? []).map(String)
+  const sponsorClasses = (visualization.encoding.node_category?.order ?? []).map(String)
 
   useEffect(() => {
     if (!container.current) return
@@ -52,12 +70,21 @@ export function NetworkGraph({ visualization, onSelect }: Props) {
             weight: n.trial_count,
             color: n.anchor ? ANCHOR : clusterColor(clusters, n.community),
             shape: SHAPES[Math.max(kinds.indexOf(n.kind), 0) % SHAPES.length],
+            border: n.sponsor_class ? (SPONSOR_CLASS[n.sponsor_class] ?? OTHER_CLASS).color : '#fff',
             index: i,
           },
-          classes: n.anchor ? 'anchor' : '',
+          classes: [n.anchor ? 'anchor' : '', n.sponsor_class ? 'classed' : ''].join(' '),
         })),
         ...edges.map((e, i) => ({
-          data: { id: `edge-${i}`, source: e.source, target: e.target, weight: e.trial_count, strength: e.association ?? 0, index: i },
+          data: {
+            id: `edge-${i}`,
+            source: e.source,
+            target: e.target,
+            weight: e.trial_count,
+            strength: e.association ?? 0,
+            line: LINE[e.relation ?? '']?.style ?? 'solid',
+            index: i,
+          },
         })),
       ],
       style: [
@@ -79,12 +106,14 @@ export function NetworkGraph({ visualization, onSelect }: Props) {
             'text-background-padding': '1px',
           },
         },
+        { selector: 'node.classed', style: { 'border-width': 3, 'border-color': 'data(border)' } },
         { selector: 'node.anchor', style: { 'border-width': 3, 'border-color': '#fff', 'font-weight': 'bold' } },
         {
           selector: 'edge',
           style: {
             width: `mapData(weight, ${edgeMin}, ${Math.max(edgeMax, edgeMin + 1)}, 1, 9)`,
             'line-color': '#5b6670',
+            'line-style': 'data(line)' as never,
             opacity: (edge: cytoscape.EdgeSingular) => 0.12 + (0.73 * edge.data('strength')) / strongest,
           },
         },
@@ -109,8 +138,14 @@ export function NetworkGraph({ visualization, onSelect }: Props) {
     })
     cy.on('tap', 'edge', (event) => {
       const edge = edges[event.target.data('index')]
+      const split =
+        edge.combined_trials !== undefined
+          ? ` · combined ${edge.combined_trials}, compared ${edge.compared_trials}`
+          : edge.lead_trials !== undefined
+            ? ` · leads ${edge.lead_trials}, collaborates ${edge.collaborator_trials}`
+            : ''
       onSelect({
-        label: `${labels.get(edge.source)} — ${labels.get(edge.target)} · association ${edge.association ?? '?'}`,
+        label: `${labels.get(edge.source)} — ${labels.get(edge.target)} · association ${edge.association ?? '?'}${split}`,
         count: edge.trial_count,
         citations: edge.citations,
       })
@@ -125,28 +160,40 @@ export function NetworkGraph({ visualization, onSelect }: Props) {
         {clusters.map((cluster) => (
           <li key={cluster}>
             <span className="swatch" style={{ background: clusterColor(clusters, cluster) }} />
-            {cluster} cluster
+            <span>{`${cluster} cluster`}</span>
           </li>
         ))}
         {nodes.some((n) => n.anchor) && (
           <li>
             <span className="swatch" style={{ background: ANCHOR }} />
-            anchor
+            <span>anchor</span>
           </li>
         )}
         {nodes.some((n) => !n.anchor && n.community == null) && (
           <li>
             <span className="swatch" style={{ background: NO_CLUSTER }} />
-            no cluster
+            <span>no cluster</span>
           </li>
         )}
         {kinds.length > 1 &&
           kinds.map((kind, i) => (
             <li key={kind}>
               <span className={`swatch ${SHAPES[i % SHAPES.length]}`} />
-              {kind}
+              <span>{kind}</span>
             </li>
           ))}
+        {lines.map((line) => (
+          <li key={line}>
+            <span className={`line-swatch ${LINE[line]?.style ?? 'solid'}`} />
+            <span>{LINE[line]?.legend ?? line}</span>
+          </li>
+        ))}
+        {sponsorClasses.map((c) => (
+          <li key={c}>
+            <span className="swatch classed" style={{ borderColor: (SPONSOR_CLASS[c] ?? OTHER_CLASS).color }} />
+            <span>{(SPONSOR_CLASS[c] ?? OTHER_CLASS).legend}</span>
+          </li>
+        ))}
         <li className="muted">line width = shared trials · darker = stronger association</li>
       </ul>
     </>

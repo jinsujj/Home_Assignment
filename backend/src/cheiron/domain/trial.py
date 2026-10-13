@@ -121,6 +121,15 @@ class Sponsor:
 
 
 @dataclass(frozen=True)
+class Arm:
+    """A group of participants and the interventions it receives, as registered."""
+
+    label: str
+    intervention_names: tuple[str, ...]
+    """As registered, "Type: Name", e.g. "Drug: Pembrolizumab"."""
+
+
+@dataclass(frozen=True)
 class Site:
     """A trial location, identified by facility name, city and country."""
 
@@ -158,3 +167,5 @@ class Trial:
     """Distinct identifiable locations; empty unless the source was asked for sites."""
     start_date_type: DateType | None = None
     completion_date_type: DateType | None = None
+    arms: tuple[Arm, ...] = ()
+    """Arm groups with their interventions; they tell a combination from a comparison."""
