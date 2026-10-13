@@ -1,0 +1,76 @@
+"""The visualization specification a frontend renders, with citations per datum."""
+
+from dataclasses import dataclass
+from enum import StrEnum
+from typing import Any
+
+STUDY_URL = "https://clinicaltrials.gov/study/{nct_id}"
+
+
+class ChartType(StrEnum):
+    BAR = "bar_chart"
+    GROUPED_BAR = "grouped_bar_chart"
+    TIME_SERIES = "time_series"
+    HISTOGRAM = "histogram"
+    SCATTER = "scatter_plot"
+    NETWORK = "network_graph"
+
+
+class FieldType(StrEnum):
+    """How a channel's values are interpreted (Vega-Lite's measurement types)."""
+
+    NOMINAL = "nominal"
+    ORDINAL = "ordinal"
+    QUANTITATIVE = "quantitative"
+    TEMPORAL = "temporal"
+
+
+@dataclass(frozen=True)
+class Channel:
+    """Maps a data field to a visual channel (x, y, series, node_size, ...)."""
+
+    field: str
+    type: FieldType
+    title: str
+    order: tuple[str | int, ...] | None = None
+    """Category order to render in; None means data order."""
+    unit: str | None = None
+    time_unit: str | None = None
+
+
+@dataclass(frozen=True)
+class Evidence:
+    """A field of the study record and its value exactly as registered."""
+
+    field: str
+    value: str
+
+
+@dataclass(frozen=True)
+class Citation:
+    nct_id: str
+    title: str
+    url: str
+    evidence: tuple[Evidence, ...]
+
+    @classmethod
+    def of(cls, nct_id: str, title: str, evidence: tuple[Evidence, ...]) -> Citation:
+        return cls(nct_id, title, STUDY_URL.format(nct_id=nct_id), evidence)
+
+
+@dataclass(frozen=True)
+class Citations:
+    """The trials behind one datum: `total` of them, the first `items` spelled out."""
+
+    total: int
+    items: tuple[Citation, ...]
+
+
+@dataclass(frozen=True)
+class Visualization:
+    type: ChartType
+    title: str
+    encoding: dict[str, Channel]
+    data: list[dict[str, Any]] | dict[str, list[dict[str, Any]]]
+    """Rows; for network graphs {"nodes": [...], "edges": [...]}."""
+    notes: tuple[str, ...] = ()

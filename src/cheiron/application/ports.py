@@ -23,6 +23,9 @@ class TrialSourceError(Exception):
 
 
 class TrialSource(Protocol):
-    async def search(self, criteria: TrialFilter, max_trials: int) -> TrialSearchResult:
-        """Return up to `max_trials` trials matching `criteria`."""
+    async def search(self, criteria: TrialFilter, max_trials: int, *, include_sites: bool = False) -> TrialSearchResult:
+        """Return up to `max_trials` trials matching `criteria`.
+
+        `Trial.sites` is only filled with `include_sites`, as sites make responses much larger.
+        """
         ...

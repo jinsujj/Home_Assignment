@@ -4,8 +4,9 @@ A backend service that turns a natural-language question about clinical trials i
 structured, frontend-renderable visualization specification, backed by the
 [ClinicalTrials.gov Data API](https://clinicaltrials.gov/data-api/api).
 
-> **Status: work in progress.** Step 1 of 5 is done (ClinicalTrials.gov adapter).
-> Sections marked _planned_ describe the design that later steps implement. See [Progress](#progress).
+> **Status: work in progress.** Steps 1–2 of 5 are done (ClinicalTrials.gov adapter;
+> analysis plan → visualization spec). Sections marked _planned_ describe the design that
+> later steps implement. See [Progress](#progress).
 
 ## Contents
 
@@ -52,8 +53,8 @@ uv run pytest -m live    # contract checks against the real ClinicalTrials.gov A
 
 ## Request / response schema
 
-_Planned (step 4)._ The service will expose `POST /visualize` with OpenAPI docs generated
-from the Pydantic models. Planned shapes, following the assignment's examples:
+_The HTTP layer is planned (step 4)._ The service will expose `POST /visualize` with OpenAPI
+docs generated from the Pydantic models, following the assignment's examples:
 
 ```jsonc
 // request
@@ -65,7 +66,40 @@ from the Pydantic models. Planned shapes, following the assignment's examples:
   "meta": { "filters": { ... }, "source": "clinicaltrials.gov", "notes": [ ... ] } }
 ```
 
-Each datum will carry citations (`nct_id` + the exact field value that placed the trial in that datum).
+### Visualization spec (implemented)
+
+`encoding` maps visual channels to data fields. Every channel is
+`{ field, type, title, order, unit, time_unit }`, where `type` is one of `nominal`, `ordinal`,
+`quantitative`, `temporal` (Vega-Lite's measurement types) and `order`, when present, is the
+category order to render.
+
+| `type` | Channels | Data |
+|---|---|---|
+| `bar_chart` | `x` (category), `y` | one row per category |
+| `grouped_bar_chart` | `x`, `y`, `series` | one row per category × series, zeros included |
+| `time_series` | `x` (temporal, `time_unit: "year"`), `y`, optional `series` | one row per year, gaps filled with 0 |
+| `histogram` | `x` (`bin_start`), `x2` (`bin_end`), `y` | one row per bin; bins are `[bin_start, bin_end)`; the last bin may be open (`bin_end: null`) |
+| `scatter_plot` | `x`, `y`, `tooltip` | one row per trial (`nct_id`, `title`, both measures) |
+| `network_graph` | `node_id`, `node_label`, `node_size`, `node_color`, `edge_source`, `edge_target`, `edge_weight` | `{ "nodes": [...], "edges": [...] }` |
+
+Every row, node and edge carries `citations`:
+
+```json
+"citations": {
+  "total": 1777,
+  "items": [
+    { "nct_id": "NCT03044730",
+      "title": "Pembrolizumab and Capecitabine in Treating Patients With ...",
+      "url": "https://clinicaltrials.gov/study/NCT03044730",
+      "evidence": [ { "field": "protocolSection.designModule.phases", "value": "PHASE2" } ] }
+  ]
+}
+```
+
+`total` is the number of trials behind the datum; `items` spells out the first few (default 5).
+`evidence` names the field of the API's study JSON and the value exactly as registered that put
+the trial into this datum (two entries for an edge, one per endpoint). `notes` lists assumptions
+and caveats in plain sentences (multi-valued counting, missing values, top-N cut-offs, binning).
 
 ## Key design decisions and trade-offs
 
@@ -85,6 +119,30 @@ No number in a response comes from the LLM. Its only output is a small plan whos
 enums taken from the API spec, so hallucinations are limited to choosing a wrong (but valid)
 plan, which the response's `meta` makes visible. Because the aggregator keeps contributing NCT
 IDs per bucket, deep citations fall out of the design instead of being bolted on.
+
+### One grammar for every question: `AnalysisPlan`
+
+Rather than one code path per question type, every question is expressed in four analysis
+kinds parameterised by enums (`cheiron/domain/analysis.py`). The chart type follows from the
+plan's shape, deterministically:
+
+| Plan | Parameters | Chart | Example question |
+|---|---|---|---|
+| `CountBy` | 1 cohort, `dimension` | `bar_chart` | "How are lung cancer trials distributed across phases?" |
+| `CountBy` | `dimension = start_year` | `time_series` | "How many trials started each year for pembrolizumab?" |
+| `CountBy` | 2–5 cohorts | `grouped_bar_chart` | "Compare phases for pembrolizumab vs nivolumab." |
+| `CountBy` | 1 cohort + `split_by` | `grouped_bar_chart` | "Phases by sponsor class for pembrolizumab trials." |
+| `CoOccurrence` | `source`, `target` entity | `network_graph` | "Network of sponsors ↔ drugs for breast cancer." |
+| `Distribution` | `measure` | `histogram` | "How large are pembrolizumab trials?" |
+| `Correlation` | `x`, `y` measures | `scatter_plot` | "Do longer trials enrol more patients?" |
+
+Dimensions: phase, status, study type, start year, country, condition, intervention,
+intervention type, lead sponsor, lead sponsor class. Entities: drug, sponsor, condition,
+country, investigator, site. Measures: enrollment, duration (months), start year. A cohort is a label plus a
+`TrialFilter`, so "Drug A vs Drug B" is two cohorts of the same `CountBy`.
+
+Adding a question class means adding an enum member and how to read it from a `Trial`
+(`domain/facets.py`), not a new pipeline.
 
 ### Lightweight hexagonal architecture, selective DDD
 
@@ -137,7 +195,12 @@ Observed while probing the live API (v2.0.5); each is handled or noted:
 | Enum values may outgrow the spec. | Unknown values are dropped per field; the study is kept. |
 | A study lists one location per site (hundreds per study). | `Trial.countries` is de-duplicated: a trial counts once per country. |
 | Non-drug items are registered as interventions (e.g. "Laboratory Biomarker Analysis", type `OTHER`). | Drug networks will use `DRUG` / `BIOLOGICAL` interventions only. |
-| Countries use registry spelling, e.g. `Korea, Republic of`. | The planner will be constrained to registry spellings. |
+| Country filters resolve variants (`USA`, `UK`, `Korea, Republic of` match `United States`, `United Kingdom`, `South Korea`); stored values use one spelling (226 distinct). | No country normalisation needed for filtering; charts show the stored spelling. |
+| Not-yet-started trials carry anticipated start dates, including future years. | Time series note that recent and future years are provisional. |
+| Officials are often roles, departments or companies: in ~6,000 surveyed records, "Clinical Sciences & Operations" (239), "Teva Medical Expert, MD" (107), "Medical Director" (106), "Medical Monitor" (90), hotline texts, the sponsor's own name. | The ACL keeps only names that look like people (pattern list from that survey; the sponsor-name rule skips individual sponsors, who are often their own investigator). |
+| One person, several spellings: "Benoit Girard, MD" / "Benoit Girard, M.D."; "James D. Carlson, Pharm.D." in four forms. | Investigator nodes are keyed without credentials after the first comma, so surnames like "Do" or "Ma" are kept. |
+| Facilities are often generic: "Research Site" (5,880 locations in three conditions), "GSK Investigational Site" (2,264), "Local Institution", hotline texts. | Generic facilities are dropped; sites are keyed by facility + city + country, so "University Hospital, Basel" ≠ "University Hospital, Zurich". |
+| Facility and city of every location double the payload (1.9 → 4.1 MB per 1,000 studies), and one trial can list 1,151 sites (~660,000 site pairs). | Site fields are fetched only for plans with site nodes; network links are counted only among the 4 × `max_nodes` most frequent nodes (pembrolizumab site network: 25.8 s → 6.4 s, same result). |
 | `pageSize=0` means the default (10), not zero; subsequent pages must repeat the first page's parameters. | Encoded and tested in `client.py`. |
 | `429` / `5xx` responses. | Retried with backoff (1 s, 2 s, 4 s); `4xx` fails fast with the API's message. |
 
@@ -160,6 +223,17 @@ uv provisions the interpreter, so reviewers do not need it preinstalled.
   in descriptions (e.g. a fecal-transplant study that mentions pembrolizumab).
 - Rate limits are not documented in the API spec; the client retries `429` but does not
   throttle proactively.
+- Entity names are matched ignoring case and spacing only. In a pembrolizumab drug network,
+  "Pembrolizumab" is a hub, but registrations as "MK-3475" or "favezelimab/pembrolizumab" stay
+  separate nodes. With more time: merge via the registered `otherNames` and a synonym source.
+- Placeholder detection for investigators and sites is a pattern list drawn from a survey of
+  real records, not a classifier; e.g. "Bristol-Myers Squibb" still passes as an investigator on
+  trials where it is not a registered sponsor.
+- Multi-valued attributes (phases, countries, conditions, interventions) count a trial once per
+  value, so bars may add up to more than the number of trials; responses say so in `notes`.
+- Scatter plots return one point per analyzed trial (up to the cap), which makes them the
+  largest responses (measured: 2.1 MB for 2,969 pembrolizumab trials, vs 10 KB for a phase bar
+  chart). With more time: drop the title duplicated between point and citation, or sample.
 
 _To be completed as the remaining steps land._
 
@@ -176,14 +250,21 @@ _To be completed by the author._ So far:
   behaviour probed against the live API before coding; offline tests use recorded API pages
   (`tests/fixtures/ctgov/`); `pytest -m live` re-checks the contract (1,000 real studies map
   without errors; synonym and exact filters hold on returned trials).
+- **Aggregation cross-check:** our phase counts for all 2,974 pembrolizumab trials equal, for
+  every phase, the API's own `countTotal` for the same query filtered to that phase
+  (`tests/application/test_live_cross_check.py`).
+- **Real-data smoke runs** of every plan kind (phase distribution, time series, drug A vs B,
+  countries, phase × sponsor class, drug and sponsor–drug networks, histogram, scatter) were
+  inspected before writing the unit tests; they surfaced the anticipated future start dates and
+  the country-variant behaviour listed above.
 
 ## Progress
 
 | Step | Scope | Status |
 |---|---|---|
 | 1 | Project setup, ClinicalTrials.gov adapter (ACL, query params, pagination, retries) | done |
-| 2 | Aggregator + SpecBuilder: hand-written plan → visualization spec | next |
-| 3 | LLM planner + validator | planned |
+| 2 | AnalysisPlan grammar, aggregation with citations, chart builders, `run_plan` use case | done |
+| 3 | LLM planner + validator | next |
 | 4 | Use case, HTTP API, schema docs, citations in responses | planned |
 | 5 | Network graphs polish, example runs, README completion | planned |
 
@@ -191,9 +272,16 @@ _To be completed by the author._ So far:
 
 ```
 src/cheiron/
-  domain/                      Trial, enums, TrialFilter (standard library only)
-  application/ports.py         TrialSource port, TrialSearchResult
+  domain/                      standard library only
+    trial.py, trial_filter.py    Trial, enums, TrialFilter
+    analysis.py                  AnalysisPlan grammar: CountBy, CoOccurrence, Distribution, Correlation
+    facets.py                    a Trial's values per dimension/entity/measure, with evidence
+    charts/                      one builder per plan kind → Visualization
+    visualization.py             output spec: chart types, channels, citations
+  application/
+    ports.py                     TrialSource port, TrialSearchResult
+    run_plan.py                  use case: fetch cohorts concurrently, build, report truncation
   adapters/outbound/ctgov/     ClinicalTrials.gov client, query params, ACL mapper
-tests/                         unit tests, recorded API fixtures, live contract tests
+tests/                         unit tests, recorded API fixtures, live contract and cross-checks
 docs/ctgov-openapi-v2.0.5.yaml the API spec this code was written against
 ```

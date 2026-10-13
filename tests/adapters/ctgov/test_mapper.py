@@ -4,6 +4,7 @@ from cheiron.domain.trial import (
     InterventionType,
     PartialDate,
     Phase,
+    Site,
     Sponsor,
     SponsorClass,
     Status,
@@ -82,3 +83,74 @@ def test_drops_values_outside_known_vocabulary() -> None:
     assert trial.phases == (Phase.PHASE2,)
     assert trial.lead_sponsor == Sponsor("Acme", None)
     assert trial.interventions == (Intervention("X", None),)
+
+
+def _with_contacts(officials: list[dict], locations: list[dict], lead: str = "Boehringer Ingelheim") -> dict:
+    return {
+        "protocolSection": {
+            "identificationModule": {"nctId": "NCT00000003"},
+            "sponsorCollaboratorsModule": {"leadSponsor": {"name": lead, "class": "INDUSTRY"}},
+            "contactsLocationsModule": {"overallOfficials": officials, "locations": locations},
+        }
+    }
+
+
+def test_investigators_keep_people_and_drop_placeholders() -> None:
+    # Placeholder names below are taken from real records.
+    officials = [
+        {"name": "Tim Heise, MD", "role": "PRINCIPAL_INVESTIGATOR"},
+        {"name": "王伟", "role": "PRINCIPAL_INVESTIGATOR"},
+        {"name": "Medical Director", "role": "STUDY_DIRECTOR"},
+        {"name": "Pfizer CT.gov Call Center", "role": "STUDY_DIRECTOR"},
+        {"name": "GSK Clinical Trials", "role": "STUDY_DIRECTOR"},
+        {"name": "Call 1-877-CTLILLY (1-877-285-4559)", "role": "STUDY_DIRECTOR"},
+        {"name": "MD", "role": "PRINCIPAL_INVESTIGATOR"},
+        {"name": "Boehringer Ingelheim", "role": "PRINCIPAL_INVESTIGATOR"},
+        {"name": "Tim Heise, MD", "role": "STUDY_CHAIR"},
+        {"name": "Teva Medical Expert, MD", "role": "STUDY_DIRECTOR"},
+        {"name": "Sponsor's Medical Expert", "role": "STUDY_DIRECTOR"},
+        {"name": "Medical Monitor", "role": "STUDY_DIRECTOR"},
+        {"name": "Clinical Sciences & Operations", "role": "STUDY_DIRECTOR"},
+        {"name": "Global Clinical Leader", "role": "STUDY_DIRECTOR"},
+        {"name": "Duramed Protocol Chair", "role": "STUDY_CHAIR"},
+        {"name": "ICD CSD", "role": "STUDY_DIRECTOR"},
+        {"name": "ABBVIE INC.", "role": "STUDY_DIRECTOR"},
+        {"name": "Boehringer Ingelheim Boehringer Ingelheim", "role": "STUDY_DIRECTOR"},
+    ]
+
+    assert to_trial(_with_contacts(officials, [])).investigators == ("Tim Heise, MD", "王伟")
+
+
+def test_an_individual_sponsor_can_be_the_investigator() -> None:
+    study = _with_contacts([{"name": "Yaron Ilan, MD", "role": "PRINCIPAL_INVESTIGATOR"}], [], lead="Yaron Ilan, MD")
+    study["protocolSection"]["sponsorCollaboratorsModule"]["leadSponsor"]["class"] = "INDIV"
+
+    assert to_trial(study).investigators == ("Yaron Ilan, MD",)
+
+
+def test_sites_are_distinct_by_facility_city_and_country_without_placeholders() -> None:
+    locations = [
+        {"facility": "Memorial Sloan Kettering Cancer Center", "city": "New York", "country": "United States"},
+        {"facility": "memorial sloan kettering cancer center", "city": "New York", "country": "United States"},
+        {"facility": "University Hospital", "city": "Basel", "country": "Switzerland"},
+        {"facility": "University Hospital", "city": "Zurich", "country": "Switzerland"},
+        {"facility": "Research Site", "city": "Seoul", "country": "South Korea"},
+        {"facility": "GSK Investigational Site", "city": "Lyon", "country": "France"},
+        {"facility": "Chiesi Clinical Trial Site", "city": "Parma", "country": "Italy"},
+        {"facility": "Local Institution - 0123", "city": "Tokyo", "country": "Japan"},
+        {
+            "facility": "For additional information regarding investigative sites for this trial, "
+            "contact 1-877-CTLILLY (1-877-285-4559)",
+            "country": "United States",
+        },
+        {"city": "Paris", "country": "France"},
+    ]
+
+    trial = to_trial(_with_contacts([], locations))
+
+    assert trial.sites == (
+        Site("Memorial Sloan Kettering Cancer Center", "New York", "United States"),
+        Site("University Hospital", "Basel", "Switzerland"),
+        Site("University Hospital", "Zurich", "Switzerland"),
+    )
+    assert trial.countries[:3] == ("United States", "Switzerland", "South Korea")

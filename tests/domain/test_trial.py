@@ -16,6 +16,11 @@ def test_partial_date_parses_registry_precisions(raw: str, expected: PartialDate
     assert PartialDate.parse(raw) == expected
 
 
+@pytest.mark.parametrize("raw", ["2019", "2019-03", "2019-03-27"])
+def test_partial_date_prints_as_registered(raw: str) -> None:
+    assert str(PartialDate.parse(raw)) == raw
+
+
 @pytest.mark.parametrize("raw", ["", "March 2019", "19-03", "2019/03"])
 def test_partial_date_rejects_other_formats(raw: str) -> None:
     with pytest.raises(ValueError):

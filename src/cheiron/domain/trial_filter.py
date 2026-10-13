@@ -13,7 +13,7 @@ class TrialFilter:
     intervention: str | None = None
     sponsor: str | None = None
     country: str | None = None
-    """Country name as ClinicalTrials.gov spells it, e.g. "Korea, Republic of"."""
+    """Country name; the API resolves common variants ("USA", "UK", "Korea, Republic of")."""
     phases: frozenset[Phase] = frozenset()
     statuses: frozenset[Status] = frozenset()
     study_type: StudyType | None = None

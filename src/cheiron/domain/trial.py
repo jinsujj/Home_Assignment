@@ -89,6 +89,15 @@ class PartialDate:
         year, month, day = match.groups()
         return cls(int(year), int(month) if month else None, int(day) if day else None)
 
+    def __str__(self) -> str:
+        """The registered form, e.g. "2021-05"."""
+        parts = [f"{self.year:04d}"]
+        if self.month is not None:
+            parts.append(f"{self.month:02d}")
+            if self.day is not None:
+                parts.append(f"{self.day:02d}")
+        return "-".join(parts)
+
 
 @dataclass(frozen=True)
 class Intervention:
@@ -101,6 +110,15 @@ class Intervention:
 class Sponsor:
     name: str
     sponsor_class: SponsorClass | None
+
+
+@dataclass(frozen=True)
+class Site:
+    """A trial location, identified by facility name, city and country."""
+
+    facility: str
+    city: str | None
+    country: str | None
 
 
 @dataclass(frozen=True)
@@ -126,3 +144,7 @@ class Trial:
     collaborators: tuple[Sponsor, ...]
     countries: tuple[str, ...]
     """Distinct location countries, in registry order."""
+    investigators: tuple[str, ...]
+    """Names of the trial's overall officials who are identifiable people."""
+    sites: tuple[Site, ...]
+    """Distinct identifiable locations; empty unless the source was asked for sites."""

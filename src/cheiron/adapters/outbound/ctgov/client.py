@@ -6,7 +6,7 @@ from typing import Any
 
 import httpx
 
-from cheiron.adapters.outbound.ctgov.mapper import FIELDS, to_trial
+from cheiron.adapters.outbound.ctgov.mapper import FIELDS, SITE_FIELDS, to_trial
 from cheiron.adapters.outbound.ctgov.params import to_params
 from cheiron.application.ports import TrialSearchResult, TrialSourceError
 from cheiron.domain.trial_filter import TrialFilter
@@ -26,10 +26,11 @@ class CtGovTrialSource:
         self._url = f"{base_url}/studies"
         self._retry_delays = retry_delays
 
-    async def search(self, criteria: TrialFilter, max_trials: int) -> TrialSearchResult:
+    async def search(self, criteria: TrialFilter, max_trials: int, *, include_sites: bool = False) -> TrialSearchResult:
         if max_trials < 1:
             raise ValueError("max_trials must be at least 1")
-        base = {**to_params(criteria), "fields": ",".join(FIELDS), "format": "json"}
+        fields = FIELDS + SITE_FIELDS if include_sites else FIELDS
+        base = {**to_params(criteria), "fields": ",".join(fields), "format": "json"}
 
         first = await self._get({**base, "countTotal": "true", "pageSize": str(min(max_trials, MAX_PAGE_SIZE))})
         total = first["totalCount"]

@@ -128,3 +128,16 @@ async def test_network_errors_are_retried_then_reported() -> None:
 async def test_rejects_non_positive_max_trials() -> None:
     with pytest.raises(ValueError):
         await _source(_paged([])).search(CRITERIA, max_trials=0)
+
+
+async def test_site_fields_are_requested_only_on_demand() -> None:
+    requests: list[httpx.Request] = []
+    source = _source(_paged(requests))
+
+    await source.search(CRITERIA, max_trials=3)
+    await source.search(CRITERIA, max_trials=3, include_sites=True)
+
+    without, with_sites = (set(r.url.params["fields"].split(",")) for r in (requests[0], requests[-1]))
+    assert {"LocationFacility", "LocationCity"} <= with_sites
+    assert not {"LocationFacility", "LocationCity"} & without
+    assert with_sites - without == {"LocationFacility", "LocationCity"}
