@@ -1,8 +1,10 @@
 """Ports: what the application needs from the outside world."""
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Protocol
 
+from cheiron.application.planning import PlanDraft, Question
 from cheiron.domain.trial import Trial
 from cheiron.domain.trial_filter import TrialFilter
 
@@ -29,3 +31,14 @@ class TrialSource(Protocol):
         `Trial.sites` is only filled with `include_sites`, as sites make responses much larger.
         """
         ...
+
+
+class PlannerError(Exception):
+    """The planner could not be reached or returned no usable draft."""
+
+
+class QueryPlanner(Protocol):
+    async def draft(self, question: Question, feedback: Sequence[str] = ()) -> PlanDraft:
+        """Draft a plan for `question`. `feedback` explains why a previous draft was rejected."""
+        ...
+

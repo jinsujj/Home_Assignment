@@ -2,9 +2,10 @@ import httpx
 import pytest
 
 from cheiron.adapters.inbound.http.api import create_app
-from cheiron.application.ports import TrialSearchResult, TrialSourceError
+from cheiron.application.ports import PlannerError, TrialSearchResult, TrialSourceError
 from cheiron.domain.trial import InterventionType, Phase
 from cheiron.domain.trial_filter import TrialFilter
+from tests.application.planning_factories import cohort, draft
 from tests.domain.factories import drug, trial
 
 PEMBRO = {"label": "Pembrolizumab", "filter": {"intervention": "pembrolizumab"}}
@@ -126,3 +127,109 @@ async def test_upstream_failure_is_a_bad_gateway() -> None:
 
     assert response.status_code == 502
     assert response.json() == {"detail": "ClinicalTrials.gov unavailable after 4 attempts (503)"}
+
+
+# --- POST /api/visualize --------------------------------------------------------------------
+
+
+class ScriptedPlanner:
+    def __init__(self, *drafts, error: Exception | None = None) -> None:
+        self.drafts, self.error = list(drafts), error
+        self.questions = []
+
+    async def draft(self, question, feedback=()):
+        self.questions.append(question)
+        if self.error:
+            raise self.error
+        return self.drafts.pop(0)
+
+
+def client_with_planner(source: FakeSource, planner) -> httpx.AsyncClient:
+    app = create_app()
+    app.state.trial_source = source
+    app.state.planner = planner
+    return httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test")
+
+
+PHASES_OF_THIS_DRUG = draft(
+    interpretation="Trials of Pembrolizumab counted by phase.",
+    cohorts=[cohort("Pembrolizumab", phases={"values": ["PHASE3"], "quote": "late phase"})],
+)
+
+
+async def test_visualize_answers_a_question_with_its_interpretation() -> None:
+    source = FakeSource([trial("NCT1", phases=(Phase.PHASE2,))])
+    planner = ScriptedPlanner(PHASES_OF_THIS_DRUG, PHASES_OF_THIS_DRUG)
+
+    response = await client_with_planner(source, planner).post(
+        "/api/visualize",
+        json={"query": "How are trials of this drug distributed across phases?", "drug_name": "Pembrolizumab"},
+    )
+
+    assert response.status_code == 200
+    meta = response.json()["meta"]
+    assert meta["query"] == "How are trials of this drug distributed across phases?"
+    assert meta["interpretation"] == "Trials of Pembrolizumab counted by phase."
+    assert meta["plan"]["kind"] == "count_by"
+    assert meta["plan"]["cohorts"][0]["filter"]["intervention"] == "Pembrolizumab"
+    assert meta["plan"]["cohorts"][0]["filter"]["phases"] == []
+    assert meta["notes"][:2] == [
+        "Ignored a phases filter on the cohort: its justification 'late phase' does not appear in the question.",
+        "Applied the request's structured fields to every cohort: drug_name=Pembrolizumab.",
+    ]
+    assert source.calls[0][0] == TrialFilter(intervention="Pembrolizumab")
+    assert planner.questions[0].fields.drug_name == "Pembrolizumab"
+
+
+async def test_visualize_refuses_unanswerable_questions() -> None:
+    planner = ScriptedPlanner(
+        draft(answerable=False, unsupported_reason="Asks for one trial's results.", kind=None, interpretation="Results of KEYNOTE-189.")
+    )
+    source = FakeSource()
+
+    response = await client_with_planner(source, planner).post("/api/visualize", json={"query": "Results of KEYNOTE-189?"})
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == {
+        "code": "unsupported_question",
+        "message": "Asks for one trial's results.",
+        "interpretation": "Results of KEYNOTE-189.",
+    }
+    assert source.calls == []
+
+
+async def test_visualize_reports_plans_that_stay_invalid() -> None:
+    planner = ScriptedPlanner(draft(dimension=None), draft(dimension=None))
+
+    response = await client_with_planner(FakeSource(), planner).post("/api/visualize", json={"query": "trials?"})
+
+    assert response.status_code == 422
+    assert response.json()["detail"]["code"] == "plan_rejected"
+    assert response.json()["detail"]["problems"] == ["count_by requires dimension."]
+
+
+@pytest.mark.parametrize(
+    "body",
+    [{}, {"query": ""}, {"query": "x", "start_year": 2020, "end_year": 2010}, {"query": "x", "phases": ["PHASE9"]}],
+)
+async def test_visualize_validates_the_request(body: dict) -> None:
+    response = await client_with_planner(FakeSource(), ScriptedPlanner()).post("/api/visualize", json=body)
+
+    assert response.status_code == 422
+
+
+async def test_visualize_without_a_configured_planner_is_unavailable() -> None:
+    response = await client_for(FakeSource()).post("/api/visualize", json={"query": "trials by phase"})
+
+    assert response.status_code == 503
+    assert "OPENAI_API_KEY" in response.json()["detail"]
+
+
+async def test_visualize_reports_an_unreachable_planner() -> None:
+    planner = ScriptedPlanner(error=PlannerError("The language model is unavailable: timeout"))
+
+    response = await client_with_planner(FakeSource(), planner).post("/api/visualize", json={"query": "trials by phase"})
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "The language model is unavailable: timeout"}
+

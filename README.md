@@ -4,10 +4,9 @@ A backend service that turns a natural-language question about clinical trials i
 structured, frontend-renderable visualization specification, backed by the
 [ClinicalTrials.gov Data API](https://clinicaltrials.gov/data-api/api).
 
-> **Status: work in progress.** The structured pipeline runs end to end: `POST /api/plans`
-> executes an analysis plan against ClinicalTrials.gov and a React demo renders the result.
-> The natural-language planner (`POST /api/visualize`) is next. Sections marked _planned_
-> describe later steps. See [Progress](#progress).
+> **Status:** questions are answered end to end (`POST /api/visualize`: LLM plan → grounding
+> → ClinicalTrials.gov → visualization spec), structured plans run directly (`POST /api/plans`),
+> and a React demo renders both. Example runs are still to be added. See [Progress](#progress).
 
 ## Contents
 
@@ -29,7 +28,9 @@ cp .env.example .env   # then set OPENAI_API_KEY
 
 | Variable | Required | Used for |
 |---|---|---|
-| `OPENAI_API_KEY` | from step 3 | the LLM query planner |
+| `OPENAI_API_KEY` | for `/api/visualize` | the LLM planner; `/api/plans` works without it |
+| `OPENAI_MODEL` | no | planner model, default `gpt-5.4-mini` |
+| `OPENAI_REASONING_EFFORT` | no | default `low`; set empty for non-reasoning models such as `gpt-4.1-mini` |
 
 `.env` is git-ignored; `.env.example` lists the variables and the allowed models.
 
@@ -48,8 +49,8 @@ with interactive docs at <http://localhost:8080/api/docs>. Two containers run: `
 Requires [uv](https://docs.astral.sh/uv/) (installs Python 3.14 if missing) and Node 22.
 
 ```bash
-cd backend && uv sync && uv run uvicorn cheiron.main:app --reload   # API on :8000
-cd frontend && npm install && npm run dev                            # UI on :5173, proxies /api to :8000
+cd backend && uv sync && uv run --env-file ../.env uvicorn cheiron.main:app --reload   # API on :8000
+cd frontend && npm install && npm run dev       # UI on :5173, proxies /api to :8000
 ```
 
 ### Test
@@ -58,6 +59,7 @@ cd frontend && npm install && npm run dev                            # UI on :51
 cd backend
 uv run pytest            # offline: unit tests, recorded API fixtures, HTTP tests with a fake source
 uv run pytest -m live    # contract checks and cross-checks against the real ClinicalTrials.gov API
+uv run --env-file ../.env pytest -m llm   # planner evaluation against the real model (17 cases)
 cd ../frontend && npm run build && npm run lint   # type-check, build, lint
 ```
 
@@ -65,10 +67,37 @@ cd ../frontend && npm run build && npm run lint   # type-check, build, lint
 
 | Endpoint | Purpose |
 |---|---|
-| `POST /api/plans` | Run a structured analysis plan (implemented). |
-| `POST /api/visualize` | Natural-language question → plan → visualization (_planned, step 3_). |
+| `POST /api/visualize` | Question (+ optional structured fields) → plan → visualization. |
+| `POST /api/plans` | Run a structured analysis plan directly, without the LLM. |
 | `GET /api/health` | Liveness. |
 | `GET /api/docs` | OpenAPI documentation generated from the Pydantic models. |
+
+### `POST /api/visualize` request
+
+```json
+{ "query": "How has the number of trials for this drug changed over time?", "drug_name": "Pembrolizumab" }
+```
+
+| Field | Type | Rules |
+|---|---|---|
+| `query` | string, 1–1,000 chars | required |
+| `drug_name`, `condition`, `sponsor` | string ≤ 200 | optional |
+| `country` | string ≤ 100 | optional |
+| `phases`, `statuses` | list of registry codes (`PHASE3`, `RECRUITING`, …) | optional; any of |
+| `start_year`, `end_year` | integer 1900–2100 | optional; trials starting in `[start_year, end_year]`; start ≤ end |
+| `max_trials_per_cohort` | integer 1–10,000 | default 5,000 |
+
+Structured fields apply to every cohort and take precedence over what the planner extracted;
+the question can refer to them ("this drug"). `meta.notes` says when they were applied.
+
+| Status | When | Body |
+|---|---|---|
+| `200` | answered | the response below, with `meta.query` and `meta.interpretation` |
+| `422` | invalid request | FastAPI's validation errors |
+| `422` | no analysis can answer it (e.g. one trial's results) | `{"detail": {"code": "unsupported_question", "message", "interpretation"}}` |
+| `422` | no valid plan after one correction round | `{"detail": {"code": "plan_rejected", "message", "problems": [...]}}` |
+| `502` | ClinicalTrials.gov failed | `{"detail": "..."}` |
+| `503` | no `OPENAI_API_KEY`, or the model is unreachable | `{"detail": "..."}` |
 
 ### `POST /api/plans` request
 
@@ -108,6 +137,8 @@ cohorts) are rejected with `422` and an explanation; ClinicalTrials.gov failures
                      "encoding": { "x": { ... }, "y": { ... }, "series": { ... } }, "data": [ ... ] },
   "meta": {
     "source": "clinicaltrials.gov",
+    "query": "Compare phases for Keytruda vs Opdivo",            // /api/visualize only
+    "interpretation": "Compare trial phases for Keytruda versus Opdivo.",   // /api/visualize only
     "plan": { ... },                       // the analysis that ran, with every filter applied
     "cohorts": [ { "label": "Pembrolizumab", "matched": 2974, "analyzed": 2974, "truncated": false }, ... ],
     "notes": [ "175 of 2974 trials in Pembrolizumab have no registered phase and are not shown.", ... ]
@@ -156,18 +187,53 @@ and caveats in plain sentences (multi-valued counting, missing values, top-N cut
 
 ```
 query + structured fields
-  → Planner (LLM)    natural language → AnalysisPlan, constrained by a strict JSON Schema of enums
-  → Validator        reject invalid combinations; explicit structured fields override LLM guesses
-  → TrialSource      AnalysisPlan filters → ClinicalTrials.gov API, paginated
+  → Planner (LLM)    PlanDraft: plan + a verbatim quote per filter, strict JSON Schema of enums
+  → Grounding        quotes checked against the question; structured fields override;
+                     domain invariants; rejected drafts get one correction round
+  → TrialSource      cohort filters → ClinicalTrials.gov API, paginated, cached per data snapshot
   → ACL              raw study JSON → domain Trial
-  → Aggregator       Trial[] → buckets, each remembering its contributing NCT IDs   (pure)
-  → SpecBuilder      plan shape → chart type + encoding                             (pure)
+  → Charts           Trial[] → buckets with contributing NCT IDs → chart type + encoding   (pure)
 ```
 
-No number in a response comes from the LLM. Its only output is a small plan whose fields are
-enums taken from the API spec, so hallucinations are limited to choosing a wrong (but valid)
-plan, which the response's `meta` makes visible. Because the aggregator keeps contributing NCT
-IDs per bucket, deep citations fall out of the design instead of being bolted on.
+No number in a response comes from the LLM. Its only output is a small plan whose categorical
+fields are enums taken from the API spec, so hallucinations are limited to choosing a wrong
+(but valid) plan, which `meta.interpretation` and `meta.plan` make visible and the demo lets
+the user edit and rerun. Because the aggregator keeps contributing NCT IDs per bucket, deep
+citations fall out of the design instead of being bolted on.
+
+### AI design: grounding the planner in the question
+
+Four layers keep the planner honest (`application/planning.py`, `application/visualize.py`):
+
+1. **Constrained output.** The model answers with `PlanDraft` via structured outputs in strict
+   mode: dimensions, entities, measures, phases, statuses and study types are enums.
+2. **Quoted filters.** Each filter carries the exact words of the question that state it.
+   A quote not found in the question (case-, spacing- and quote-mark-insensitive) means the
+   filter was invented or paraphrased; text values must be taken from their quote, so search
+   terms are the user's words and synonyms are left to ClinicalTrials.gov.
+3. **One correction round.** Problems (unquoted filters, missing kind-specific fields, domain
+   violations such as `split_by` with several cohorts) go back to the model with its previous
+   draft. On the last attempt unquoted filters are dropped and reported in `meta.notes`, unless
+   that leaves a compared cohort without a filter of its own, which is rejected instead.
+4. **Refusal.** Questions no analysis can answer (one trial's results, medical advice,
+   off-topic) return `422 unsupported_question` with the reason; no chart is invented.
+
+Why the correction round exists: in the first evaluation `gpt-4.1-mini` quoted "trials involving
+Opdivo" for "Keytruda vs Opdivo". Dropping that filter silently turned the comparison into
+Keytruda vs the whole registry. With the round, the model fixes its quotes (both comparisons
+then planned correctly), and a cohort left without filters is rejected rather than charted.
+
+The planner sees today's date (for "in the last 5 years"), the structured fields (for "this
+drug") and the grammar; it never sees trial data.
+
+**Model choice** (`tests/llm/test_planner_eval.py`: 17 cases covering every appendix question
+type, structured-field references, relative periods and three unanswerable questions, each
+asserting the exact filters so an added filter fails the case):
+
+| Model | Result | Planner latency |
+|---|---|---|
+| `gpt-5.4-mini`, reasoning `low` (default) | 17/17 in two runs | ~1.5–2.2 s |
+| `gpt-4.1-mini` | 16/17 (Keytruda vs Opdivo failed once, passed 3/3 on rerun) | ~1.8–4.8 s |
 
 ### One grammar for every question: `AnalysisPlan`
 
@@ -208,8 +274,9 @@ and the LLM out), so ports and adapters pay off, while most tactical DDD would b
 | Aggregates, repositories, domain events | no | Nothing is mutated or stored; a repository would be a renamed API client. |
 | Multiple bounded contexts, CQRS, DI container | no | One context, queries only; constructor injection suffices. |
 
-The domain (`cheiron.domain`) depends on the standard library only. Pydantic is used at the edges
-(HTTP schemas, LLM output schema).
+The domain (`cheiron.domain`) depends on the standard library only. Pydantic is used for the HTTP
+schemas and for the planner contract (`PlanDraft` in `application/planning.py`), which doubles as
+the JSON Schema any LLM adapter must satisfy.
 
 ### No database
 
@@ -286,16 +353,20 @@ and `study_type` distinguishes the kinds; the ACL is where "study" becomes "tria
 
 ### Two entry points: structured plans and natural language
 
-`POST /api/plans` runs a plan directly; `POST /api/visualize` (step 3) will let the LLM write
-the plan. The plan's Pydantic models are shared: they validate client plans and constrain the
-LLM's structured output. The structured endpoint gives reproducible results, lets the core be
-exercised without an LLM, and serves clients that build plans themselves.
+`POST /api/visualize` lets the LLM write the plan; `POST /api/plans` runs a plan directly. Both
+run the same `run_plan` use case and return the same response; `meta.plan` of a question's answer
+is a valid `/api/plans` request, so an interpretation can be corrected by hand and rerun (the demo
+does this). The LLM writes a separate `PlanDraft` rather than the public plan schema because the
+draft carries the per-filter quotes used for grounding. The structured endpoint gives
+reproducible results, exercises the core without an LLM, and serves clients that build plans
+themselves.
 
 ### Frontend: a generic renderer, not a per-question UI
 
-The React demo (`frontend/`) knows nothing about questions. It maps `type` + `encoding` to
-Vega-Lite (bars, time series, histograms, scatter) or Cytoscape (networks), and shows the
-citations of whatever datum is clicked. That it renders every chart kind from the spec alone
+The React demo (`frontend/`) asks questions (with optional structured fields), shows how each
+was understood, and lets the resulting plan be edited and rerun. Its rendering knows nothing
+about questions: it maps `type` + `encoding` to Vega-Lite (bars, time series, histograms,
+scatter) or Cytoscape (networks), and shows the citations of whatever datum is clicked. That it renders every chart kind from the spec alone
 is the evidence that the spec is renderable without guessing; building it caught one renderer
 mistake (pre-binned histograms need `bin: {binned: true}` in Vega-Lite) and no spec gaps.
 
@@ -334,6 +405,11 @@ uv provisions the interpreter locally and the Docker image is `python:3.14-slim`
 - An uncached question over a large cohort takes a few seconds (pages of 1,000 studies are
   fetched sequentially, as the API's page tokens require).
 - The demo bundle is 1.5 MB (Vega dominates); it is not code-split.
+- Grounding proves a filter was stated, not that it was mapped correctly: a quoted "late-stage"
+  mapped to `PHASE3` passes. `meta.interpretation` and the editable plan are the mitigation.
+- Planning adds ~1.5–2 s per question; answers are not cached by question (data fetches are).
+- One question at a time: no follow-up questions that refer to a previous answer.
+- The evaluation covers English questions; other languages are untested.
 
 _To be completed as the remaining steps land._
 
@@ -360,6 +436,11 @@ _To be completed by the author._ So far:
 - **End to end in a browser:** every example in the demo was run against the live API through
   the React UI, including clicking data to inspect citations; this is how the histogram
   rendering bug and the cramped network layout were found and fixed.
+- **Planner evaluation:** `pytest -m llm` runs 17 cases against the real model and asserts the
+  plan kind, its parameters and the exact filters (so an added filter fails), plus refusals;
+  results per model are in [AI design](#ai-design-grounding-the-planner-in-the-question).
+  Offline tests cover grounding rules, the correction round, the OpenAI adapter (request shape and
+  parsing, via a mocked transport) and every `/api/visualize` status code.
 - **Docker:** `docker compose up --build` was run; the API container reports healthy, runs as a
   non-root user, and serves plans through the nginx proxy.
 
@@ -370,8 +451,8 @@ _To be completed by the author._ So far:
 | 1 | Project setup, ClinicalTrials.gov adapter (ACL, query params, pagination, retries) | done |
 | 2 | AnalysisPlan grammar, aggregation with citations, chart builders, `run_plan` use case | done |
 | 2b | Monorepo, `POST /api/plans`, React renderer, cache, Docker Compose | done |
-| 3 | LLM planner + validator, `POST /api/visualize`, question box in the UI | next |
-| 4 | Example runs, README completion | planned |
+| 3 | LLM planner with grounding, `POST /api/visualize`, planner evaluation, question box in the UI | done |
+| 4 | Example runs, README completion | next |
 
 ### Project structure
 
@@ -387,12 +468,16 @@ backend/
     application/
       ports.py                       TrialSource port, TrialSearchResult
       run_plan.py                    use case: fetch cohorts concurrently, build, report truncation
+      planning.py                    PlanDraft (LLM contract), Question, grounding rules
+      visualize.py                   use case: plan with one correction round, then run_plan
     adapters/
       inbound/http/                  FastAPI routes and Pydantic schemas
+      outbound/openai_planner.py     QueryPlanner on OpenAI structured outputs, planner instructions
       outbound/ctgov/                ClinicalTrials.gov client, query params, ACL mapper
       outbound/caching.py            TrialSource decorator keyed to the data snapshot
     main.py                        composition root
-  tests/                           unit, HTTP and cache tests, recorded fixtures, live checks
+  tests/                           unit, HTTP, cache and planner tests; recorded fixtures;
+                                   live API checks (-m live); planner evaluation (-m llm)
   Dockerfile
 frontend/                          React + TypeScript (Vite): generic spec renderer
   src/charts/toVegaLite.ts         spec → Vega-Lite

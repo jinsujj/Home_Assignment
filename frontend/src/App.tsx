@@ -1,17 +1,29 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { runPlan } from './api/client'
+import { askQuestion, runPlan } from './api/client'
 import type { Selection, VisualizationResponse } from './api/types'
 import { CitationPanel } from './components/CitationPanel'
 import { MetaPanel } from './components/MetaPanel'
 import { NetworkGraph } from './components/NetworkGraph'
 import { VegaChart } from './components/VegaChart'
-import { PRESETS } from './presets'
+import { EXAMPLES, type StructuredFields } from './presets'
 
-const asText = (request: unknown) => JSON.stringify(request, null, 2)
+type Call = (request: unknown, signal: AbortSignal) => Promise<VisualizationResponse>
+
+const FIELD_INPUTS: { key: keyof StructuredFields; label: string; type: 'text' | 'number' }[] = [
+  { key: 'drug_name', label: 'Drug', type: 'text' },
+  { key: 'condition', label: 'Condition', type: 'text' },
+  { key: 'sponsor', label: 'Sponsor', type: 'text' },
+  { key: 'country', label: 'Country', type: 'text' },
+  { key: 'start_year', label: 'Start year ≥', type: 'number' },
+  { key: 'end_year', label: 'Start year ≤', type: 'number' },
+]
+
+const questionRequest = (query: string, fields: StructuredFields) => ({ query, ...fields })
 
 export default function App() {
-  const [active, setActive] = useState(0)
-  const [requestText, setRequestText] = useState(() => asText(PRESETS[0].request))
+  const [query, setQuery] = useState(EXAMPLES[0].query)
+  const [fields, setFields] = useState<StructuredFields>(EXAMPLES[0].fields ?? {})
+  const [planText, setPlanText] = useState('')
   const [result, setResult] = useState<VisualizationResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -20,13 +32,14 @@ export default function App() {
   const inFlight = useRef<AbortController | null>(null)
 
   // State changes only once the response arrives; a newer request aborts the older one.
-  const fetchResult = useCallback((request: unknown) => {
+  const send = useCallback((call: Call, request: unknown) => {
     inFlight.current?.abort()
     const controller = new AbortController()
     inFlight.current = controller
-    runPlan(request, controller.signal)
+    call(request, controller.signal)
       .then((response) => {
         setResult(response)
+        setPlanText(JSON.stringify({ plan: response.meta.plan }, null, 2))
         setError(null)
       })
       .catch((e: unknown) => {
@@ -37,32 +50,45 @@ export default function App() {
       })
   }, [])
 
-  // Show the first example on load; the initial state already says "loading".
+  // Answer the first example on load; the initial state already says "loading".
   useEffect(() => {
-    fetchResult(PRESETS[0].request)
+    send(askQuestion, questionRequest(EXAMPLES[0].query, EXAMPLES[0].fields ?? {}))
     return () => inFlight.current?.abort()
-  }, [fetchResult])
+  }, [send])
 
-  const run = (text: string) => {
-    let request: unknown
-    try {
-      request = JSON.parse(text)
-    } catch (e) {
-      setError(`Invalid JSON: ${(e as Error).message}`)
-      return
-    }
+  const start = (call: Call, request: unknown) => {
     setLoading(true)
     setError(null)
     setSelection(null)
-    fetchResult(request)
+    send(call, request)
+  }
+
+  const ask = (text = query, structured = fields) => {
+    if (text.trim()) start(askQuestion, questionRequest(text.trim(), structured))
   }
 
   const choose = (index: number) => {
-    const text = asText(PRESETS[index].request)
-    setActive(index)
-    setRequestText(text)
-    run(text)
+    const example = EXAMPLES[index]
+    setQuery(example.query)
+    setFields(example.fields ?? {})
+    ask(example.query, example.fields ?? {})
   }
+
+  const runEditedPlan = () => {
+    try {
+      start(runPlan, JSON.parse(planText))
+    } catch (e) {
+      setError(`Invalid JSON: ${(e as Error).message}`)
+    }
+  }
+
+  const setField = (key: keyof StructuredFields, raw: string, type: 'text' | 'number') =>
+    setFields((current) => {
+      const next = { ...current }
+      if (raw === '') delete next[key]
+      else (next as Record<string, unknown>)[key] = type === 'number' ? Number(raw) : raw
+      return next
+    })
 
   const viz = result?.visualization
 
@@ -70,37 +96,78 @@ export default function App() {
     <div className="app">
       <aside>
         <h1>Cheiron</h1>
-        <p className="muted">ClinicalTrials.gov questions → visualization specs</p>
+        <p className="muted">Questions about ClinicalTrials.gov, answered with charts</p>
+
+        <form
+          className="ask"
+          onSubmit={(e) => {
+            e.preventDefault()
+            ask()
+          }}
+        >
+          <textarea
+            className="question"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault()
+                ask()
+              }
+            }}
+            placeholder="Ask about clinical trials…"
+          />
+          <details className="fields" open={Object.keys(fields).length > 0}>
+            <summary>Structured fields (optional)</summary>
+            {FIELD_INPUTS.map(({ key, label, type }) => (
+              <label key={key}>
+                {label}
+                <input type={type} value={fields[key] ?? ''} onChange={(e) => setField(key, e.target.value, type)} />
+              </label>
+            ))}
+          </details>
+          <button className="primary" type="submit" disabled={loading}>
+            {loading ? 'Working…' : 'Ask'}
+          </button>
+        </form>
 
         <h2>Example questions</h2>
         <ol className="presets">
-          {PRESETS.map((preset, index) => (
-            <li key={preset.question}>
-              <button className={index === active ? 'active' : ''} onClick={() => choose(index)}>
-                {preset.question}
+          {EXAMPLES.map((example, index) => (
+            <li key={example.query}>
+              <button onClick={() => choose(index)}>
+                {example.query}
+                {example.fields?.drug_name && <span className="muted"> (drug: {example.fields.drug_name})</span>}
               </button>
             </li>
           ))}
         </ol>
 
-        <h2>
-          Plan request <code>POST /api/plans</code>
-        </h2>
-        <textarea value={requestText} onChange={(e) => setRequestText(e.target.value)} spellCheck={false} />
-        <button className="primary" onClick={() => run(requestText)} disabled={loading}>
-          {loading ? 'Running…' : 'Run plan'}
-        </button>
+        <details className="plan-editor">
+          <summary>
+            Edit and rerun the plan <code>POST /api/plans</code>
+          </summary>
+          <textarea value={planText} onChange={(e) => setPlanText(e.target.value)} spellCheck={false} />
+          <button className="secondary" onClick={runEditedPlan} disabled={loading || !planText}>
+            Run plan
+          </button>
+        </details>
       </aside>
 
       <main>
         {error && <pre className="error">{error}</pre>}
-        {!result && loading && <p className="muted">Querying ClinicalTrials.gov…</p>}
+        {!result && loading && <p className="muted">Planning and querying ClinicalTrials.gov…</p>}
         {result && viz && (
           <>
             <header className={loading ? 'stale' : ''}>
               <span className="type">{viz.type}</span>
-              {loading && <span className="muted"> Querying ClinicalTrials.gov…</span>}
+              {loading && <span className="muted"> Working…</span>}
               <h2>{viz.title}</h2>
+              {result.meta.interpretation && (
+                <p className="interpretation">
+                  <strong>Understood as:</strong> {result.meta.interpretation}
+                </p>
+              )}
             </header>
             <section className={`card ${loading ? 'stale' : ''}`}>
               {viz.type === 'network_graph' ? (

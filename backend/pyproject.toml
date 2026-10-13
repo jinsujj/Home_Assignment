@@ -6,6 +6,7 @@ requires-python = ">=3.14"
 dependencies = [
     "fastapi>=0.143.0",
     "httpx>=0.28.1",
+    "openai>=3.29.0",
     "pydantic>=2.14.1",
     "uvicorn[standard]>=0.54.0",
 ]
@@ -19,8 +20,11 @@ packages = ["src/cheiron"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-markers = ["live: hits the real ClinicalTrials.gov API (deselect with -m 'not live')"]
-addopts = "-m 'not live'"
+markers = [
+    "live: hits the real ClinicalTrials.gov API (run with -m live)",
+    "llm: calls the OpenAI API to evaluate the planner (run with -m llm; needs OPENAI_API_KEY)",
+]
+addopts = "-m 'not live and not llm'"
 
 [dependency-groups]
 dev = [

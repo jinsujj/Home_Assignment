@@ -74,6 +74,8 @@ export interface CohortMeta {
 
 export interface Meta {
   source: string
+  query: string | null
+  interpretation: string | null
   plan: unknown
   cohorts: CohortMeta[]
   notes: string[]

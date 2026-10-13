@@ -86,13 +86,8 @@ aside {
   background: var(--bg);
 }
 
-.presets button.active {
-  border-color: var(--accent);
-  background: #eef3fd;
-}
-
-textarea {
-  flex: 1;
+.plan-editor textarea {
+  width: 100%;
   min-height: 220px;
   padding: 8px;
   border: 1px solid var(--border);
@@ -110,6 +105,67 @@ button.primary {
   font: inherit;
   font-weight: 600;
   cursor: pointer;
+}
+
+button.secondary {
+  margin-top: 6px;
+  padding: 7px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--card);
+  font: inherit;
+  cursor: pointer;
+}
+
+.ask {
+  display: flex;
+  flex-direction: column;
+  margin-top: 16px;
+}
+
+textarea.question {
+  min-height: 72px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font: 15px/1.4 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  resize: vertical;
+}
+
+.fields {
+  margin-top: 8px;
+  color: var(--muted);
+}
+
+.fields label {
+  display: grid;
+  grid-template-columns: 100px 1fr;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.fields input {
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  font: inherit;
+}
+
+.plan-editor {
+  margin-top: 20px;
+}
+
+.plan-editor summary {
+  cursor: pointer;
+  color: var(--muted);
+}
+
+.interpretation {
+  margin: -4px 0 12px;
+  padding: 8px 12px;
+  border-left: 3px solid var(--accent);
+  background: #eef3fd;
 }
 
 button.primary:disabled {
