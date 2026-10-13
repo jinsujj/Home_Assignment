@@ -58,13 +58,23 @@ export function CitationPanel({ selection, names }: Props) {
         </p>
       )}
       {names.length > 0 && citations.items.length > 0 && !verdicts && (
-        <p>
-          <button type="button" className="secondary small" onClick={judge} disabled={judging}>
-            {judging && <span className="spinner" aria-hidden="true" />}
-            <span>{`Ask AI what ${names[0]} is to these trials`}</span>
+        <div className="ai-check">
+          <button type="button" onClick={judge} disabled={judging}>
+            {judging ? (
+              <span className="spinner" aria-hidden="true" />
+            ) : (
+              <span className="ai-badge" aria-hidden="true">
+                AI
+              </span>
+            )}
+            <span>{judging ? 'Reading the records…' : `Ask AI what ${names[0]} is to these trials`}</span>
           </button>
-          {problem && <span className="muted">{` ${problem}`}</span>}
-        </p>
+          <span className="ai-check-hint">
+            {`Reads each cited record and says whether ${names[0]} is studied, given alongside, an eligibility ` +
+              'condition or background, quoting the record.'}
+          </span>
+          {problem && <span className="ai-check-problem">{problem}</span>}
+        </div>
       )}
       {verdicts && (
         <p className="muted">Roles are a language model's reading; each quote was found in the trial's record.</p>

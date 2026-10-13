@@ -569,7 +569,61 @@ pre {
   color: var(--muted);
 }
 
-button.secondary.small {
-  padding: 4px 10px;
+.ai-check {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  margin: 8px 0 12px;
+  padding: 10px 12px;
+  border: 1px solid #c9d8f6;
+  border-radius: 8px;
+  background: #f2f6fe;
+}
+
+.ai-check button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ai-check button:hover {
+  background: #2559b8;
+}
+
+.ai-check button:disabled {
+  opacity: 0.75;
+  cursor: progress;
+}
+
+.ai-check .spinner {
+  margin: 0;
+}
+
+.ai-badge {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.25);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+}
+
+.ai-check-hint {
+  flex: 1 1 220px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.ai-check-problem {
+  flex-basis: 100%;
+  color: var(--error);
   font-size: 12px;
 }
