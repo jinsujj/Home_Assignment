@@ -267,6 +267,6 @@ backend/src/cheiron/
   main.py            composition root
 backend/tests/       unit, HTTP, cache tests; live API checks (-m live); LLM evaluations (-m llm)
 frontend/src/        React + Vega-Lite + Cytoscape renderer driven only by the spec
-docs/                design notes, example runs, API spec, domain glossary (Korean)
+docs/                design notes, example runs, API spec
 docker-compose.yml   api (FastAPI, non-root) + web (nginx serving the UI, proxying /api)
 ```

@@ -21,7 +21,7 @@
 - **데모.** React 화면이 명세만으로 모든 차트 유형을 그린다.
 
 결정마다의 이유와 실측값은 [docs/design.ko.md](docs/design.ko.md)에, 실제 JSON을 포함한 실행 예시 다섯 개는
-[아래](#실행-예시)에 있다. 용어가 낯설면 [도메인 용어 정리](docs/domain-glossary.ko.md)를 먼저 보면 좋다.
+[아래](#실행-예시)에 있다.
 
 ## 빠른 시작
 
@@ -256,6 +256,6 @@ backend/src/cheiron/
   main.py            조립 지점
 backend/tests/       단위·HTTP·캐시 테스트, 실제 API 확인(-m live), LLM 평가(-m llm)
 frontend/src/        명세만으로 그리는 React + Vega-Lite + Cytoscape 렌더러
-docs/                설계 노트, 실행 예시, API 명세, 도메인 용어 정리
+docs/                설계 노트, 실행 예시, API 명세
 docker-compose.yml   api(FastAPI, 비root) + web(화면을 제공하고 /api를 프록시하는 nginx)
 ```
