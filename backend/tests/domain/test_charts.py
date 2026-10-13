@@ -471,3 +471,32 @@ def test_estimated_start_dates_are_cited_and_counted() -> None:
         "1 of 2 counted trials have an estimated start date (not started yet, or not updated since; their "
         "citations show startDateStruct.type ESTIMATED), so the years they fall in are provisional." in viz.notes
     )
+
+
+def test_notes_that_count_trials_cite_them() -> None:
+    a, b = Cohort("A", TrialFilter(intervention="a")), Cohort("B", TrialFilter(intervention="b"))
+    shared = trial("NCT1", phases=(Phase.PHASE2,))
+    unphased = trial("NCT2")
+    trials = {"A": [shared, unphased], "B": [shared]}
+
+    viz = build_visualization(CountBy((a, b), Dimension.PHASE), trials)
+
+    cited = {note: c for note, c in viz.note_citations}
+    assert [i.nct_id for i in cited["1 of 2 trials in A have no registered phase and are not shown."].items] == ["NCT2"]
+    assert [i.nct_id for i in cited["Trials that match more than one cohort are counted in each (1 in total)."].items] == ["NCT1"]
+    assert all(note in viz.notes for note in cited)
+
+
+def test_estimated_starts_and_missing_measures_are_cited() -> None:
+    trials = [trial("NCT1", start_date="2027-01", start_date_type=DateType.ESTIMATED, enrollment=10), trial("NCT2")]
+
+    series = build_visualization(CountBy((PEM,), Dimension.START_YEAR), {"Pembrolizumab": trials})
+    histogram = build_visualization(Distribution(PEM, Measure.ENROLLMENT), {"Pembrolizumab": trials})
+    scatter = build_visualization(Correlation(PEM, Measure.START_YEAR, Measure.ENROLLMENT), {"Pembrolizumab": trials})
+
+    [(_, estimated)] = [(n, c) for n, c in series.note_citations if "estimated start" in n]
+    assert estimated.items[0].evidence == (Evidence(START_DATE, "2027-01"), Evidence(START_DATE_TYPE, "ESTIMATED"))
+    assert [(n, [i.nct_id for i in c.items]) for n, c in histogram.note_citations] == [
+        ("1 of 2 trials have no enrollment and are not shown.", ["NCT2"])
+    ]
+    assert [i.nct_id for _, c in scatter.note_citations for i in c.items] == ["NCT2"]

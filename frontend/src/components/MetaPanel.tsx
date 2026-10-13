@@ -1,6 +1,13 @@
-import type { Meta } from '../api/types'
+import type { Meta, Selection } from '../api/types'
 
-export function MetaPanel({ meta }: { meta: Meta }) {
+interface Props {
+  meta: Meta
+  /** Shows the trials a note counts in the citation panel. */
+  onSelect: (selection: Selection) => void
+}
+
+export function MetaPanel({ meta, onSelect }: Props) {
+  const cited = new Map((meta.note_citations ?? []).map((n) => [n.note, n.citations]))
   return (
     <div className="meta">
       {meta.cohorts.length > 0 && (
@@ -28,9 +35,26 @@ export function MetaPanel({ meta }: { meta: Meta }) {
         </table>
       )}
       <ul className="notes">
-        {meta.notes.map((note) => (
-          <li key={note}>{note}</li>
-        ))}
+        {meta.notes.map((note) => {
+          const citations = cited.get(note)
+          return (
+            <li key={note}>
+              {note}
+              {citations && (
+                <>
+                  {' '}
+                  <button
+                    type="button"
+                    className="link small"
+                    onClick={() => onSelect({ label: note, count: citations.total, citations })}
+                  >
+                    show trials
+                  </button>
+                </>
+              )}
+            </li>
+          )
+        })}
       </ul>
       <details>
         <summary>Plan (interpretation and filters)</summary>

@@ -117,6 +117,8 @@ export interface Meta {
   notes: string[]
   /** The ClinicalTrials.gov data snapshot (its /version dataTimestamp) the answer was computed from. */
   data_version: string | null
+  /** For notes that count trials: those trials, cited like a datum. */
+  note_citations: { note: string; citations: Citations }[]
 }
 
 /** Another chart form of the same data, with notes about this form. */

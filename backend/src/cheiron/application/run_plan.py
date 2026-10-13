@@ -20,7 +20,7 @@ from cheiron.domain.membership import (
     memberships,
 )
 from cheiron.domain.trial_filter import TrialFilter
-from cheiron.domain.visualization import RegistryCount, Visualization
+from cheiron.domain.visualization import Citation, Citations, RegistryCount, Visualization
 
 DEFAULT_MAX_TRIALS = 5000
 MAX_COUNT_REQUESTS = 20
@@ -68,6 +68,8 @@ class PlanResult:
     """The same data in other chart forms (charts.views)."""
     data_version: str | None = None
     """The registry data snapshot the answer was computed from."""
+    note_citations: tuple[tuple[str, Citations], ...] = ()
+    """Notes that count trials, with those trials (like Visualization.note_citations)."""
 
 
 async def run_plan(
@@ -90,7 +92,7 @@ async def run_plan(
     listing_notes = ()
     if all_citation_ids and totals and isinstance(plan, CountBy):
         listing_notes = await _list_counted_trials(plan, totals, source)
-    by_cohort, mention_notes = await _memberships(cohorts, results, source, max_trials_per_cohort)
+    by_cohort, mention_notes = await _memberships(cohorts, results, source, max_trials_per_cohort, max_citations)
     # Trials that register the filtered terms come first, so they are the ones cited in full.
     trials = {
         c.label: sorted(r.trials, key=lambda t: bool(by_cohort[c.label][t.nct_id].mentioned_only))
@@ -114,7 +116,7 @@ async def run_plan(
         for r in reports
         if r.truncated
     )
-    notes += mention_notes + listing_notes
+    notes += tuple(text for text, _ in mention_notes) + listing_notes
     notes += tuple(
         f"No trials match the filters{f' for {r.label}' if r.label else ''}; "
         "check the spelling or try a broader term."
@@ -132,15 +134,18 @@ async def run_plan(
         notes,
         alternatives=alternative_views(visualization),
         data_version=await _data_version(source),
+        note_citations=tuple((text, cited) for text, cited in mention_notes if cited),
     )
 
 
 async def _memberships(
-    cohorts: Sequence[Cohort], results: Sequence[TrialSearchResult], source: Registry, limit: int
-) -> tuple[dict[str, dict[str, Membership]], tuple[str, ...]]:
+    cohorts: Sequence[Cohort], results: Sequence[TrialSearchResult], source: Registry, limit: int, max_citations: int
+) -> tuple[dict[str, dict[str, Membership]], tuple[tuple[str, Citations | None], ...]]:
     """Why each analyzed trial is in its cohort, by cohort label, and notes on trials that only
-    mention a free-text filter. One request per free-text filter, plus pages of IDs if many."""
-    by_cohort, notes = {}, []
+    mention a free-text filter, with the trials a note counts. One request per free-text filter,
+    plus pages of IDs if many."""
+    by_cohort: dict[str, dict[str, Membership]] = {}
+    notes: list[tuple[str, Citations | None]] = []
     for cohort, result in zip(cohorts, results, strict=True):
         mentioned: dict[str, frozenset[str] | None] = {}
         for criterion in FREE_TEXT_CRITERIA:
@@ -152,14 +157,17 @@ async def _memberships(
                 mentioned[criterion] = None
             where = f" for {cohort.label}" if cohort.label else ""
             if (ids := mentioned[criterion]) is None:
-                notes.append(f"Trials that only mention {term!r}{where} could not be told apart from the others.")
-            elif count := sum(t.nct_id in ids for t in result.trials):
-                notes.append(
-                    f"{count:,} of {len(result.trials):,} analyzed trials{where} mention {term!r} without registering "
+                text = f"Trials that only mention {term!r}{where} could not be told apart from the others."
+                notes.append((text, None))
+            elif only := [t for t in result.trials if t.nct_id in ids]:
+                text = (
+                    f"{len(only):,} of {len(result.trials):,} analyzed trials{where} mention {term!r} without registering "
                     f"it as {_REGISTERED_AS[criterion]} (ClinicalTrials.gov's search also matches text such as "
                     "descriptions, and a narrower registered name, e.g. a subtype, does not count); their citations "
                     "list it under mentioned_only."
                 )
+                cited = tuple(Citation.of(t.nct_id, t.title, (), (term,)) for t in only[:max_citations])
+                notes.append((text, Citations(len(only), cited, tuple(t.nct_id for t in only))))
         by_cohort[cohort.label] = memberships(result.trials, cohort.filter, mentioned)
     return by_cohort, tuple(notes)
 

@@ -492,3 +492,15 @@ async def test_network_views_refer_to_the_networks_edges() -> None:
     matrix, ranking = body["alternatives"]
     assert matrix["data"][0]["citations"] == {"$ref": "#/visualization/data/edges/0/citations"}
     assert resolved(body, ranking["data"][0]["citations"])["total"] == 3
+
+
+async def test_notes_that_count_trials_come_with_their_citations() -> None:
+    source = FakeSource([trial("NCT1", phases=(Phase.PHASE2,)), trial("NCT2")])
+    plan = {"kind": "count_by", "cohorts": [PEMBRO], "dimension": "phase"}
+
+    meta = (await client_for(source).post("/api/plans", json={"plan": plan})).json()["meta"]
+
+    [cited] = meta["note_citations"]
+    assert cited["note"] == "1 of 2 trials have no registered phase and are not shown." and cited["note"] in meta["notes"]
+    assert [i["nct_id"] for i in cited["citations"]["items"]] == ["NCT2"]
+    assert cited["citations"]["nct_ids"] is None  # listed only with all_citation_ids

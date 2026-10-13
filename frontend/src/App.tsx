@@ -365,7 +365,7 @@ export default function App() {
                 </section>
                 <section className="card">
                   <h3>Meta</h3>
-                  <MetaPanel meta={result.meta} />
+                  <MetaPanel meta={result.meta} onSelect={setSelection} />
                 </section>
               </div>
               <details className="card" onToggle={(e) => setShowRaw(e.currentTarget.open)}>

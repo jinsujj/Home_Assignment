@@ -274,3 +274,17 @@ async def test_every_trial_behind_registry_counts_is_listed_on_request() -> None
     phase2 = result.visualization.data[1]["citations"]
     assert (phase2.total, len(phase2.nct_ids), phase2.registry_query) == (30, 30, "query PHASE2")
     assert len(phase2.items) == 1  # still the analyzed trial, with its evidence
+
+
+async def test_the_mention_note_cites_the_trials_it_counts() -> None:
+    mentioning = trial("NCT2", phases=(Phase.PHASE2,))
+    source = FakeSource(
+        {A.filter: TrialSearchResult((trial("NCT1", phases=(Phase.PHASE2,)), mentioning), total_count=2)},
+        mentioned={(A.filter, "intervention"): frozenset({"NCT2"})},
+    )
+
+    result = await run_plan(CountBy((A,), Dimension.PHASE), source)
+
+    [(note, cited)] = result.note_citations
+    assert note == result.notes[0]
+    assert (cited.total, cited.nct_ids, cited.items[0].mentioned_only) == (1, ("NCT2",), ("a",))

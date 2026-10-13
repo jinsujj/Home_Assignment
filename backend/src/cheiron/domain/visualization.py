@@ -113,3 +113,5 @@ class Visualization:
     data: list[dict[str, Any]] | dict[str, list[dict[str, Any]]]
     """Rows; for network graphs {"nodes": [...], "edges": [...]}."""
     notes: tuple[str, ...] = ()
+    note_citations: tuple[tuple[str, Citations], ...] = ()
+    """Notes that count trials (e.g. "175 of 2974 trials have no registered phase"), with those trials."""

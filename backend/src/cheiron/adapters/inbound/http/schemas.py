@@ -303,6 +303,11 @@ class TrialMeta(BaseModel):
     alternatives: list[TrialOption] = Field(description="Other trials with posted results that the name matched.")
 
 
+class NoteCitationOut(BaseModel):
+    note: str = Field(description="A note from `notes` that counts trials.")
+    citations: Citations = Field(description="The trials it counts, cited like a datum.")
+
+
 class Meta(BaseModel):
     source: Literal["clinicaltrials.gov"] = "clinicaltrials.gov"
     query: str | None = Field(None, description="The question, for POST /api/visualize.")
@@ -313,6 +318,10 @@ class Meta(BaseModel):
     notes: list[str] = Field(description="Assumptions and caveats in plain sentences.")
     data_version: str | None = Field(
         None, description="The ClinicalTrials.gov data snapshot (its /version dataTimestamp) the answer was computed from."
+    )
+    note_citations: list[NoteCitationOut] = Field(
+        default_factory=list,
+        description="For notes that count trials (e.g. \"175 of 2974 trials have no registered phase\"): those trials.",
     )
 
 
@@ -367,6 +376,10 @@ class VisualizationResponse(BaseModel):
                 trial=_trial_meta(result),
                 notes=[*planning_notes, *viz.notes, *result.notes],
                 data_version=result.data_version,
+                note_citations=[
+                    NoteCitationOut(note=note, citations=cited if all_citation_ids else dataclasses.replace(cited, nct_ids=None))
+                    for note, cited in (*viz.note_citations, *result.note_citations)
+                ],
             ),
         )
 

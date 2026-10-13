@@ -4,7 +4,7 @@ import statistics
 from collections.abc import Sequence
 
 from cheiron.domain.analysis import Correlation
-from cheiron.domain.charts.common import MEASURE_TITLES, cohort_suffix
+from cheiron.domain.charts.common import MEASURE_TITLES, Bucket, cohort_suffix
 from cheiron.domain.facets import measure_value
 from cheiron.domain.trial import Trial
 from cheiron.domain.visualization import Channel, ChartType, Citation, Citations, FieldType, Visualization
@@ -13,11 +13,13 @@ SKEW_RATIO = 10
 """An axis whose largest value is at least this many times its median is drawn log-like."""
 
 
-def build_correlation(plan: Correlation, trials: Sequence[Trial]) -> Visualization:
+def build_correlation(plan: Correlation, trials: Sequence[Trial], max_citations: int) -> Visualization:
     rows = []
+    skipped = Bucket()
     for trial in trials:
         x, y = measure_value(trial, plan.x), measure_value(trial, plan.y)
         if x is None or y is None:
+            skipped.add(trial, ())
             continue
         evidence = tuple(dict.fromkeys(x[1] + y[1]))
         rows.append(
@@ -33,8 +35,11 @@ def build_correlation(plan: Correlation, trials: Sequence[Trial]) -> Visualizati
     (x_title, x_unit), (y_title, y_unit) = MEASURE_TITLES[plan.x], MEASURE_TITLES[plan.y]
     xs, ys = [r[plan.x.value] for r in rows], [r[plan.y.value] for r in rows]
     notes = ["Each point is one trial."]
-    if skipped := len(trials) - len(rows):
-        notes.append(f"{skipped} of {len(trials)} trials lack {x_title.lower()} or {y_title.lower()} and are not shown.")
+    cited_notes = []
+    if skipped.count:
+        missing = f"{skipped.count} of {len(trials)} trials lack {x_title.lower()} or {y_title.lower()} and are not shown."
+        notes.append(missing)
+        cited_notes.append((missing, skipped.citations(max_citations)))
     if association := _association(xs, ys, x_title.lower(), y_title.lower()):
         notes.append(association)
     scales = {}
@@ -51,9 +56,8 @@ def build_correlation(plan: Correlation, trials: Sequence[Trial]) -> Visualizati
         "y": Channel(plan.y.value, FieldType.QUANTITATIVE, y_title, unit=y_unit, scale=scales.get("y")),
         "tooltip": Channel("title", FieldType.NOMINAL, "Trial"),
     }
-    return Visualization(
-        ChartType.SCATTER, f"{y_title} vs {x_title.lower()}" + cohort_suffix(plan.cohorts), encoding, rows, tuple(notes)
-    )
+    title = f"{y_title} vs {x_title.lower()}" + cohort_suffix(plan.cohorts)
+    return Visualization(ChartType.SCATTER, title, encoding, rows, tuple(notes), tuple(cited_notes))
 
 
 def _association(xs: list[float], ys: list[float], x: str, y: str) -> str | None:

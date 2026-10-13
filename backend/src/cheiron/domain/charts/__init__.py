@@ -32,6 +32,6 @@ def build_visualization(
         case Distribution():
             return build_distribution(plan, trials_by_cohort[plan.cohort.label], max_citations)
         case Correlation():
-            return build_correlation(plan, trials_by_cohort[plan.cohort.label])
+            return build_correlation(plan, trials_by_cohort[plan.cohort.label], max_citations)
         case TrialResults():
             raise TypeError("TrialResults charts posted results, not trials: use charts.trial_results")

@@ -31,10 +31,15 @@ def build_count_by(
     categories: defaultdict[Key, Bucket] = defaultdict(Bucket)
     series: defaultdict[Key | None, Bucket] = defaultdict(Bucket)
     notes: list[str] = []
+    cited_notes: list[tuple[str, Citations]] = []
+
+    def note(text: str, trials: Bucket) -> None:
+        notes.append(text)
+        cited_notes.append((text, trials.citations(max_citations)))
 
     for cohort in plan.cohorts:
         trials = trials_by_cohort[cohort.label]
-        skipped = 0
+        skipped = Bucket()
         for trial in trials:
             values = dimension_facets(trial, dim)
             groups: list[tuple[Key | None, str | None, tuple[Evidence, ...]]]
@@ -43,17 +48,17 @@ def build_count_by(
             else:
                 groups = [(cohort.label if compare else None, cohort.label, ())]
             if not values or not groups:
-                skipped += 1
+                skipped.add(trial, ())
                 continue
             for value in values:
                 categories[value.key].add(trial, value.evidences, value.label)
                 for key, label, evidence in groups:
                     cells[value.key, key].add(trial, (*value.evidences, *evidence), value.label)
                     series[key].add(trial, evidence, label)
-        if skipped:
+        if skipped.count:
             missing = DIMENSION_TITLES[dim].lower() + (f" or {DIMENSION_TITLES[split].lower()}" if split else "")
             where = f" in {cohort.label}" if compare else ""
-            notes.append(f"{skipped} of {len(trials)} trials{where} have no registered {missing} and are not shown.")
+            note(f"{skipped.count} of {len(trials)} trials{where} have no registered {missing} and are not shown.", skipped)
 
     def registry(category: Key, key: Key | None) -> RegistryCount | None:
         return totals.get(key if compare else plan.cohorts[0].label, {}).get(category)
@@ -128,20 +133,25 @@ def build_count_by(
     if temporal and rows:
         notes.append("Years without any trial start are included with a count of 0.")
         counted = [t for c in plan.cohorts for t in trials_by_cohort[c.label] if t.start_date]
-        if estimated := sum(t.start_date_type is DateType.ESTIMATED for t in counted):
-            notes.append(
-                f"{estimated:,} of {len(counted):,} counted trials have an estimated start date (not started yet, or "
-                "not updated since; their citations show startDateStruct.type ESTIMATED), so the years they fall in "
-                "are provisional."
+        estimated = Bucket()
+        for t in counted:
+            if t.start_date_type is DateType.ESTIMATED:
+                estimated.add(t, dimension_facets(t, Dimension.START_YEAR)[0].evidences)
+        if estimated.count:
+            note(
+                f"{estimated.count:,} of {len(counted):,} counted trials have an estimated start date (not started yet, "
+                "or not updated since; their citations show startDateStruct.type ESTIMATED), so the years they fall "
+                "in are provisional.",
+                estimated,
             )
-    if compare and (overlap := _overlap(plan.cohorts, trials_by_cohort)):
-        notes.append(f"Trials that match more than one cohort are counted in each ({overlap} in total).")
+    if compare and (overlap := _overlap(plan.cohorts, trials_by_cohort)).count:
+        note(f"Trials that match more than one cohort are counted in each ({overlap.count} in total).", overlap)
 
     what = "Trials started per year" if temporal else f"Trials by {DIMENSION_TITLES[dim].lower()}"
     if split:
         what += f" and {DIMENSION_TITLES[split].lower()}"
     chart = ChartType.TIME_SERIES if temporal else ChartType.GROUPED_BAR if series_field else ChartType.BAR
-    return Visualization(chart, what + cohort_suffix(plan.cohorts), encoding, rows, tuple(notes))
+    return Visualization(chart, what + cohort_suffix(plan.cohorts), encoding, rows, tuple(notes), tuple(cited_notes))
 
 
 def _order(
@@ -162,9 +172,14 @@ def _order(
     return kept, len(ranked) - len(kept)
 
 
-def _overlap(cohorts: tuple[Cohort, ...], trials_by_cohort: Mapping[str, Sequence[Trial]]) -> int:
-    seen: dict[str, int] = defaultdict(int)
+def _overlap(cohorts: tuple[Cohort, ...], trials_by_cohort: Mapping[str, Sequence[Trial]]) -> Bucket:
+    """The trials that match more than one cohort."""
+    found: dict[str, list[Trial]] = defaultdict(list)
     for cohort in cohorts:
-        for nct_id in {t.nct_id for t in trials_by_cohort[cohort.label]}:
-            seen[nct_id] += 1
-    return sum(1 for n in seen.values() if n > 1)
+        for trial in {t.nct_id: t for t in trials_by_cohort[cohort.label]}.values():
+            found[trial.nct_id].append(trial)
+    overlap = Bucket()
+    for matches in found.values():
+        if len(matches) > 1:
+            overlap.add(matches[0], ())
+    return overlap

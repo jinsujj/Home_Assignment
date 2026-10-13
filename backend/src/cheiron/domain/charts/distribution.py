@@ -14,10 +14,19 @@ CLIP_PERCENTILE = 0.95
 
 def build_distribution(plan: Distribution, trials: Sequence[Trial], max_citations: int) -> Visualization:
     title, unit = MEASURE_TITLES[plan.measure]
-    points = [(m[0], trial, m[1]) for trial in trials if (m := measure_value(trial, plan.measure)) is not None]
+    points = []
+    skipped = Bucket()
+    for trial in trials:
+        if (measured := measure_value(trial, plan.measure)) is None:
+            skipped.add(trial, ())
+        else:
+            points.append((measured[0], trial, measured[1]))
     notes = []
-    if skipped := len(trials) - len(points):
-        notes.append(f"{skipped} of {len(trials)} trials have no {title.lower()} and are not shown.")
+    cited_notes = []
+    if skipped.count:
+        missing = f"{skipped.count} of {len(trials)} trials have no {title.lower()} and are not shown."
+        notes.append(missing)
+        cited_notes.append((missing, skipped.citations(max_citations)))
 
     rows = []
     if points:
@@ -53,9 +62,8 @@ def build_distribution(plan: Distribution, trials: Sequence[Trial], max_citation
         "x2": Channel("bin_end", FieldType.QUANTITATIVE, title, unit=unit),
         "y": TRIAL_COUNT,
     }
-    return Visualization(
-        ChartType.HISTOGRAM, f"Distribution of {title.lower()}" + cohort_suffix(plan.cohorts), encoding, rows, tuple(notes)
-    )
+    chart_title = f"Distribution of {title.lower()}" + cohort_suffix(plan.cohorts)
+    return Visualization(ChartType.HISTOGRAM, chart_title, encoding, rows, tuple(notes), tuple(cited_notes))
 
 
 def _nice_step(raw: float) -> int:
