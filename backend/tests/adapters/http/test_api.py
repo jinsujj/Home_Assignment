@@ -48,6 +48,16 @@ class FakeSource:
 pytestmark = pytest.mark.anyio
 
 
+def resolved(body: dict, citations: dict) -> dict:
+    """Follows a JSON reference ({"$ref": "#/visualization/data/0/citations"}) within the response."""
+    if "$ref" not in citations:
+        return citations
+    node = body
+    for key in citations["$ref"].removeprefix("#/").split("/"):
+        node = node[int(key)] if isinstance(node, list) else node[key]
+    return node
+
+
 def client_for(source: FakeSource) -> httpx.AsyncClient:
     app = create_app()
     app.state.trial_source = source
@@ -360,7 +370,9 @@ async def test_responses_carry_alternative_views_with_their_notes() -> None:
     [donut] = body["alternatives"]
     assert donut["type"] == "donut_chart"
     assert donut["data"][0]["share"] == 100.0
-    assert donut["data"][0]["citations"]["total"] == 1
+    # The slice cites the same trials as the bar, so it refers to the bar's citations.
+    assert donut["data"][0]["citations"] == {"$ref": "#/visualization/data/0/citations"}
+    assert resolved(body, donut["data"][0]["citations"])["total"] == 1
     assert donut["notes"][0] == "Each slice is its share of the counts in the bar chart."
 
 
@@ -372,7 +384,7 @@ async def test_every_contributing_trial_is_listed_on_request() -> None:
 
     body = response.json()
     for view in [body["visualization"], *body["alternatives"]]:
-        cited = view["data"][0]["citations"]
+        cited = resolved(body, view["data"][0]["citations"])
         assert (cited["total"], len(cited["items"])) == (7, 5)
         assert cited["nct_ids"] == [f"NCT{i}" for i in range(7)]
 
@@ -469,3 +481,14 @@ async def test_registry_counts_cite_their_query_and_on_request_every_trial() -> 
     assert (cited["total"], cited["registry_query"], cited["nct_ids"]) == (1, "https://registry/PHASE2", None)
     cited = listed["visualization"]["data"][0]["citations"]
     assert (cited["total"], len(cited["nct_ids"])) == (31, 31)
+
+
+async def test_network_views_refer_to_the_networks_edges() -> None:
+    trials = [trial(f"NCT{i}", interventions=(drug("a"), drug("b"))) for i in range(3)]
+    plan = {"kind": "co_occurrence", "cohort": PEMBRO, "source": "drug", "target": "drug"}
+
+    body = (await client_for(FakeSource(trials)).post("/api/plans", json={"plan": plan})).json()
+
+    matrix, ranking = body["alternatives"]
+    assert matrix["data"][0]["citations"] == {"$ref": "#/visualization/data/edges/0/citations"}
+    assert resolved(body, ranking["data"][0]["citations"])["total"] == 3

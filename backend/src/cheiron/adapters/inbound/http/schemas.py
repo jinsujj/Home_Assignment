@@ -334,11 +334,19 @@ class VisualizationResponse(BaseModel):
         all_citation_ids: bool = False,
     ) -> Self:
         viz = result.visualization
-        shown = (lambda data: data) if all_citation_ids else _without_citation_ids
+        primary = _citation_paths(viz.data)
         return cls(
-            visualization=VisualizationOut(type=viz.type, title=viz.title, encoding=viz.encoding, data=shown(viz.data)),
+            visualization=VisualizationOut(
+                type=viz.type, title=viz.title, encoding=viz.encoding, data=_shown(viz.data, {}, all_citation_ids)
+            ),
             alternatives=[
-                ViewOut(type=v.type, title=v.title, encoding=v.encoding, data=shown(v.data), notes=list(v.notes))
+                ViewOut(
+                    type=v.type,
+                    title=v.title,
+                    encoding=v.encoding,
+                    data=_shown(v.data, primary, all_citation_ids),
+                    notes=list(v.notes),
+                )
                 for v in result.alternatives
             ],
             meta=Meta(
@@ -377,12 +385,32 @@ def _trial_meta(result: PlanResult) -> TrialMeta | None:
     )
 
 
-def _without_citation_ids(data: list[dict[str, Any]] | dict[str, list[dict[str, Any]]]) -> Any:
-    """Rows (or nodes and edges) with `citations.nct_ids` left out, to keep default responses small."""
+type Data = list[dict[str, Any]] | dict[str, list[dict[str, Any]]]
+
+
+def _citation_paths(data: Data) -> dict[int, str]:
+    """Where each Citations object of the primary visualization sits, as a JSON reference."""
+    parts = data.items() if isinstance(data, dict) else [(None, data)]
+    return {
+        id(row["citations"]): "#/visualization/data/" + (f"{part}/" if part else "") + f"{i}/citations"
+        for part, rows in parts
+        for i, row in enumerate(rows)
+        if isinstance(row.get("citations"), Citations)
+    }
+
+
+def _shown(data: Data, primary: dict[int, str], all_citation_ids: bool) -> Any:
+    """Rows as sent: citations already sent with the primary visualization become JSON references
+    (alternative views reuse them; a drug network's views repeated ~1.4 MB), and `nct_ids` are
+    left out unless requested, to keep responses small."""
 
     def row(r: dict[str, Any]) -> dict[str, Any]:
         cited = r.get("citations")
-        return r | {"citations": dataclasses.replace(cited, nct_ids=None)} if isinstance(cited, Citations) else r
+        if not isinstance(cited, Citations):
+            return r
+        if id(cited) in primary:
+            return r | {"citations": {"$ref": primary[id(cited)]}}
+        return r if all_citation_ids else r | {"citations": dataclasses.replace(cited, nct_ids=None)}
 
     if isinstance(data, dict):
         return {part: [row(r) for r in rows] for part, rows in data.items()}

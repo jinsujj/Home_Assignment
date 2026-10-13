@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ApiError, askQuestion, getOptions, getVersion, runPlan } from './api/client'
+import { resolvedViews } from './api/references'
 import type { NetworkData, SearchOptions, Selection, View, Visualization, VisualizationResponse } from './api/types'
 import { CitationPanel } from './components/CitationPanel'
 import { Composer } from './components/Composer'
@@ -205,7 +206,8 @@ export default function App() {
     }
   }
 
-  const views: (Visualization | View)[] = result ? [result.visualization, ...result.alternatives] : []
+  const alternatives = useMemo(() => (result ? resolvedViews(result) : []), [result])
+  const views: (Visualization | View)[] = result ? [result.visualization, ...alternatives] : []
   const viz = views[viewIndex] ?? result?.visualization
 
   return (
