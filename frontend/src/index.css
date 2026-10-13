@@ -557,32 +557,47 @@ pre {
   }
 }
 
-.other-trials ul {
+.other-ids {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 12px;
-  margin: 0;
+  gap: 4px 14px;
+  margin: 0 0 8px;
   padding: 0;
-  max-height: 240px;
-  overflow-y: auto;
   list-style: none;
+}
+
+.other-ids > li > a {
   font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
   font-size: 13px;
+}
+
+/* A judged trial takes a whole line, for its verdict under it. */
+.other-ids > li.judged {
+  flex-basis: 100%;
+}
+
+.other-ids ul {
+  margin: 2px 0 0;
+  padding-left: 16px;
+}
+
+.other-trials .ai-check {
+  margin-top: 12px;
 }
 
 .citations .mentioned {
   color: #a15c00;
 }
 
-.citations .verdict {
+.verdict {
   color: var(--text);
 }
 
-.citations .verdict.studied {
+.verdict.studied {
   color: #1e7a4f;
 }
 
-.citations .verdict.unclear {
+.verdict.unclear {
   color: var(--muted);
 }
 

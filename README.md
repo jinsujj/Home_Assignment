@@ -650,7 +650,9 @@ removable chips. For a single trial it shows the trial used, with links, and let
 switch to another trial the name matched. Tabs above each chart switch between the answer's
 views (e.g. Bars / Map / Donut). Notes that count trials have a "show trials" link that lists
 them in the citation panel, and registry counts link to the API request that reproduces them.
-Beyond the five trials cited in full, "List the other trials" lists the rest by NCT ID. Refusals and "no posted results" appear as neutral notices, not
+Beyond the five trials cited in full, "List the other trials" lists the rest by NCT ID, 20 at a
+time, and the "Ask AI" check reads whichever listed trials it has not judged yet (in requests of
+10, the endpoint's limit, sent together: 25 trials took 24 s). Refusals and "no posted results" appear as neutral notices, not
 errors, and replace the previous chart.
 
 Rendering knows nothing about questions: it maps `type` + `encoding` to Vega-Lite (bars with
