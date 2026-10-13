@@ -2,10 +2,12 @@ import httpx
 import pytest
 
 from cheiron.adapters.inbound.http.api import create_app
+from cheiron.application.options import SearchOptionsProvider
 from cheiron.application.ports import PlannerError, TrialSearchResult, TrialSourceError
 from cheiron.domain.trial import InterventionType, Phase
 from cheiron.domain.trial_filter import TrialFilter
 from tests.application.planning_factories import cohort, draft
+from tests.application.test_options import FakeVocabulary
 from tests.domain.factories import drug, trial
 
 PEMBRO = {"label": "Pembrolizumab", "filter": {"intervention": "pembrolizumab"}}
@@ -233,3 +235,14 @@ async def test_visualize_reports_an_unreachable_planner() -> None:
     assert response.status_code == 503
     assert response.json() == {"detail": "The language model is unavailable: timeout"}
 
+
+async def test_options_list_choices_for_building_filters() -> None:
+    app = create_app()
+    app.state.options = SearchOptionsProvider(FakeVocabulary())
+    client = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test")
+
+    body = (await client.get("/api/options")).json()
+
+    assert body["countries"][1] == {"value": "South Korea", "label": "South Korea", "trials": 17784}
+    assert body["phases"][2] == {"value": "PHASE2", "label": "Phase 2", "trials": None}
+    assert set(body) == {"countries", "conditions", "interventions", "sponsors", "phases", "statuses"}

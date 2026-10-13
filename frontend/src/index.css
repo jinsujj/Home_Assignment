@@ -137,19 +137,82 @@ textarea.question {
   color: var(--muted);
 }
 
-.fields label {
+.fields summary {
+  cursor: pointer;
+}
+
+.filter-fields label {
   display: grid;
-  grid-template-columns: 100px 1fr;
+  grid-template-columns: 92px 1fr;
   align-items: center;
   gap: 8px;
   margin-top: 6px;
+  color: var(--text);
 }
 
-.fields input {
+.filter-fields input,
+.filter-fields select {
+  min-width: 0;
   padding: 5px 8px;
   border: 1px solid var(--border);
   border-radius: 5px;
+  background: var(--card);
+  color: var(--text);
   font: inherit;
+}
+
+.filter-fields fieldset {
+  margin: 8px 0 0;
+  padding: 0;
+  border: 0;
+}
+
+.filter-fields legend {
+  margin-bottom: 4px;
+  color: var(--text);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.chip {
+  padding: 3px 9px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.chip.on {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
+.years {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+}
+
+.years label:last-child {
+  grid-template-columns: auto 90px;
+}
+
+button.link {
+  margin-top: 8px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
 }
 
 .plan-editor {

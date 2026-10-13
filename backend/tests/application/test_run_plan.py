@@ -59,3 +59,14 @@ async def test_sites_are_fetched_only_for_plans_that_use_them() -> None:
     await run_plan(CoOccurrence(A, Entity.SPONSOR, Entity.DRUG), source)
 
     assert source.include_sites == [True, False]
+
+
+async def test_country_filters_are_explained() -> None:
+    korea = Cohort("Pembrolizumab", TrialFilter(intervention="pembrolizumab", country="South Korea"))
+    source = FakeSource({korea.filter: TrialSearchResult((), total_count=0)})
+
+    result = await run_plan(CountBy((korea,), Dimension.PHASE), source)
+
+    assert result.notes == (
+        "A country filter keeps trials with at least one site in that country, so multinational trials are included.",
+    )

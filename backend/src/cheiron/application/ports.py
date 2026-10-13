@@ -2,6 +2,7 @@
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import Protocol
 
 from cheiron.application.planning import PlanDraft, Question
@@ -42,3 +43,23 @@ class QueryPlanner(Protocol):
         """Draft a plan for `question`. `feedback` explains why a previous draft was rejected."""
         ...
 
+
+class Vocabulary(StrEnum):
+    """Registry fields whose common values help users build filters."""
+
+    COUNTRY = "country"
+    CONDITION = "condition"
+    INTERVENTION = "intervention"
+    SPONSOR = "sponsor"
+
+
+@dataclass(frozen=True)
+class TermCount:
+    term: str
+    trials: int
+
+
+class VocabularySource(Protocol):
+    async def common_terms(self) -> dict[Vocabulary, tuple[TermCount, ...]]:
+        """Registry-wide values by number of trials, most common first (a top list per vocabulary)."""
+        ...

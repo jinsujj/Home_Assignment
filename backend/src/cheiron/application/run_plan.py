@@ -57,4 +57,9 @@ async def run_plan(
         for r in reports
         if r.truncated
     )
+    if any(c.filter.country for c in cohorts):
+        notes += (
+            "A country filter keeps trials with at least one site in that country, "
+            "so multinational trials are included.",
+        )
     return PlanResult(visualization, reports, notes)

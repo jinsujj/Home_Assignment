@@ -20,6 +20,7 @@ from cheiron.adapters.inbound.http.api import create_app
 from cheiron.adapters.outbound.caching import CachingTrialSource
 from cheiron.adapters.outbound.ctgov.client import CtGovTrialSource
 from cheiron.adapters.outbound.openai_planner import OpenAIPlanner
+from cheiron.application.options import SearchOptionsProvider
 
 DEFAULT_MODEL = "gpt-5.4-mini"  # most accurate and fastest of those compared in tests/llm/test_planner_eval.py
 
@@ -30,6 +31,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         http = await stack.enter_async_context(httpx.AsyncClient(timeout=httpx.Timeout(30.0)))
         ctgov = CtGovTrialSource(http)
         app.state.trial_source = CachingTrialSource(ctgov, data_version=ctgov.data_version)
+        app.state.options = SearchOptionsProvider(ctgov)
 
         app.state.planner = None
         if os.environ.get("OPENAI_API_KEY"):

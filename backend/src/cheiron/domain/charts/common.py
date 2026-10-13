@@ -3,6 +3,7 @@
 from collections import Counter
 
 from cheiron.domain.analysis import Cohort, Dimension, Entity, Measure
+from cheiron.domain.facets import PHASE_ORDER, label
 from cheiron.domain.trial import Trial
 from cheiron.domain.visualization import Channel, Citation, Citations, Evidence, FieldType
 
@@ -61,5 +62,43 @@ class Bucket:
 
 
 def cohort_suffix(cohorts: tuple[Cohort, ...]) -> str:
+    """" — A vs B · scope": cohort labels, then filters all cohorts share that no label names.
+
+    Without the scope, "Pembrolizumab" and "Pembrolizumab in South Korea" got the same title.
+    """
     labels = [c.label for c in cohorts if c.label]
-    return f" — {' vs '.join(labels)}" if labels else ""
+    parts = [" vs ".join(labels)] if labels else []
+    named = " ".join(labels).casefold()
+    parts += [s for s in _shared_scope(cohorts) if s.casefold() not in named]
+    return f" — {' · '.join(parts)}" if parts else ""
+
+
+def _shared_scope(cohorts: tuple[Cohort, ...]) -> list[str]:
+    first = cohorts[0].filter
+    if any(c.filter != first for c in cohorts[1:]):
+        shared = {
+            name: value
+            for name, value in vars(first).items()
+            if all(getattr(c.filter, name) == value for c in cohorts[1:])
+        }
+    else:
+        shared = vars(first)
+
+    scope = [shared[name] for name in ("intervention", "condition", "sponsor", "country") if shared.get(name)]
+    for name in ("phases", "statuses"):
+        if shared.get(name):
+            scope.append(", ".join(label(code) for code in sorted(shared[name], key=_code_order)))
+    if shared.get("study_type"):
+        scope.append(label(shared["study_type"]))
+    start, end = shared.get("start_year_from"), shared.get("start_year_to")
+    if start is not None and end is not None:
+        scope.append(f"started {start}" if start == end else f"started {start}–{end}")
+    elif start is not None:
+        scope.append(f"started {start} or later")
+    elif end is not None:
+        scope.append(f"started {end} or earlier")
+    return scope
+
+
+def _code_order(code: str) -> tuple[int, str]:
+    return (PHASE_ORDER.index(code), code) if code in PHASE_ORDER else (len(PHASE_ORDER), code)

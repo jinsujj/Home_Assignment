@@ -1,4 +1,4 @@
-import type { VisualizationResponse } from './types'
+import type { SearchOptions, VisualizationResponse } from './types'
 
 export class ApiError extends Error {}
 
@@ -7,6 +7,13 @@ export const askQuestion = (request: unknown, signal?: AbortSignal) => post('/ap
 
 /** POST /api/plans: a structured analysis plan, no LLM involved. */
 export const runPlan = (request: unknown, signal?: AbortSignal) => post('/api/plans', request, signal)
+
+/** GET /api/options: registry countries, common terms, phase and status codes. */
+export async function getOptions(signal?: AbortSignal): Promise<SearchOptions> {
+  const response = await fetch('/api/options', { signal })
+  if (response.ok) return response.json()
+  throw new ApiError(await describeError(response))
+}
 
 async function post(path: string, request: unknown, signal?: AbortSignal): Promise<VisualizationResponse> {
   const response = await fetch(path, {

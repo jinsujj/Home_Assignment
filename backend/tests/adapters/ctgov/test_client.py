@@ -4,7 +4,7 @@ import httpx
 import pytest
 
 from cheiron.adapters.outbound.ctgov.client import CtGovTrialSource
-from cheiron.application.ports import TrialSourceError
+from cheiron.application.ports import TermCount, TrialSourceError, Vocabulary
 from cheiron.domain.trial_filter import TrialFilter
 from tests.conftest import load_fixture
 
@@ -149,3 +149,23 @@ async def test_data_version_is_the_published_snapshot_timestamp() -> None:
         return httpx.Response(200, json={"apiVersion": "2.0.5", "dataTimestamp": "2026-10-09T09:00:05"})
 
     assert await _source(handler).data_version() == "2026-10-09T09:00:05"
+
+
+async def test_common_terms_come_from_registry_wide_field_stats() -> None:
+    stats = [
+        {"piece": "LocationCountry", "topValues": [{"value": "United States", "studiesCount": 196050}]},
+        {"piece": "Condition", "topValues": [{"value": "Breast Cancer", "studiesCount": 8921}]},
+        {"piece": "InterventionName", "topValues": [{"value": "Pembrolizumab", "studiesCount": 2000}]},
+        {"piece": "LeadSponsorName", "topValues": []},
+    ]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/v2/stats/field/values"
+        assert request.url.params["fields"] == "LocationCountry,Condition,InterventionName,LeadSponsorName"
+        return httpx.Response(200, json=stats)
+
+    terms = await _source(handler).common_terms()
+
+    assert terms[Vocabulary.COUNTRY] == (TermCount("United States", 196050),)
+    assert terms[Vocabulary.INTERVENTION] == (TermCount("Pembrolizumab", 2000),)
+    assert terms[Vocabulary.SPONSOR] == ()

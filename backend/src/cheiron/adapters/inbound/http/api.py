@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from cheiron.adapters.inbound.http.schemas import PlanRequest, VisualizationResponse, VisualizeRequest, plan_from_domain
+from cheiron.application.options import SearchOptions, SearchOptionsProvider
 from cheiron.application.planning import UnsupportedQuestion
 from cheiron.application.ports import PlannerError, QueryPlanner, TrialSource, TrialSourceError
 from cheiron.application.run_plan import run_plan
@@ -27,9 +28,23 @@ def query_planner(request: Request) -> QueryPlanner:
     return planner
 
 
+def options_provider(request: Request) -> SearchOptionsProvider:
+    return request.app.state.options
+
+
 @router.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@router.get(
+    "/options",
+    summary="Choices for building filters",
+    description="Every country in the registry (exact spellings, with trial counts), the most common "
+    "conditions, interventions and sponsors as suggestions, and the phase and status codes.",
+)
+async def search_options(provider: Annotated[SearchOptionsProvider, Depends(options_provider)]) -> SearchOptions:
+    return await provider.get()
 
 
 @router.post(

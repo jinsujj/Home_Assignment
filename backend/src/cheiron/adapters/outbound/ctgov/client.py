@@ -8,11 +8,17 @@ import httpx
 
 from cheiron.adapters.outbound.ctgov.mapper import FIELDS, SITE_FIELDS, to_trial
 from cheiron.adapters.outbound.ctgov.params import to_params
-from cheiron.application.ports import TrialSearchResult, TrialSourceError
+from cheiron.application.ports import TermCount, TrialSearchResult, TrialSourceError, Vocabulary
 from cheiron.domain.trial_filter import TrialFilter
 
 BASE_URL = "https://clinicaltrials.gov/api/v2"
 MAX_PAGE_SIZE = 1000  # the API coerces larger values down to this
+_VOCABULARY_PIECES = {
+    Vocabulary.COUNTRY: "LocationCountry",  # all 226 values are returned
+    Vocabulary.CONDITION: "Condition",  # top 250 of ~134,000
+    Vocabulary.INTERVENTION: "InterventionName",  # top 250 of ~537,000
+    Vocabulary.SPONSOR: "LeadSponsorName",  # top 250 of ~52,000
+}
 
 
 class CtGovTrialSource:
@@ -52,7 +58,16 @@ class CtGovTrialSource:
         (in practice once per US business day, in one batch)."""
         return (await self._get({}, path="/version"))["dataTimestamp"]
 
-    async def _get(self, params: dict[str, str], path: str = "/studies") -> dict[str, Any]:
+    async def common_terms(self) -> dict[Vocabulary, tuple[TermCount, ...]]:
+        """Registry-wide value counts from /stats/field/values (not filterable by search)."""
+        stats = await self._get({"fields": ",".join(_VOCABULARY_PIECES.values())}, path="/stats/field/values")
+        by_piece = {field["piece"]: field.get("topValues", []) for field in stats}
+        return {
+            vocabulary: tuple(TermCount(v["value"], v["studiesCount"]) for v in by_piece.get(piece, []))
+            for vocabulary, piece in _VOCABULARY_PIECES.items()
+        }
+
+    async def _get(self, params: dict[str, str], path: str = "/studies") -> Any:
         for attempt, delay in enumerate((*self._retry_delays, None)):
             try:
                 response = await self._http.get(self._base_url + path, params=params)

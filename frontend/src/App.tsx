@@ -1,22 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { askQuestion, runPlan } from './api/client'
-import type { Selection, VisualizationResponse } from './api/types'
+import { askQuestion, getOptions, runPlan } from './api/client'
+import type { SearchOptions, Selection, VisualizationResponse } from './api/types'
 import { CitationPanel } from './components/CitationPanel'
+import { FilterFields } from './components/FilterFields'
 import { MetaPanel } from './components/MetaPanel'
 import { NetworkGraph } from './components/NetworkGraph'
 import { VegaChart } from './components/VegaChart'
 import { EXAMPLES, type StructuredFields } from './presets'
 
 type Call = (request: unknown, signal: AbortSignal) => Promise<VisualizationResponse>
-
-const FIELD_INPUTS: { key: keyof StructuredFields; label: string; type: 'text' | 'number' }[] = [
-  { key: 'drug_name', label: 'Drug', type: 'text' },
-  { key: 'condition', label: 'Condition', type: 'text' },
-  { key: 'sponsor', label: 'Sponsor', type: 'text' },
-  { key: 'country', label: 'Country', type: 'text' },
-  { key: 'start_year', label: 'Start year ≥', type: 'number' },
-  { key: 'end_year', label: 'Start year ≤', type: 'number' },
-]
 
 const questionRequest = (query: string, fields: StructuredFields) => ({ query, ...fields })
 
@@ -29,7 +21,17 @@ export default function App() {
   const [loading, setLoading] = useState(true)
   const [selection, setSelection] = useState<Selection | null>(null)
   const [showRaw, setShowRaw] = useState(false)
+  const [options, setOptions] = useState<SearchOptions | null>(null)
   const inFlight = useRef<AbortController | null>(null)
+
+  // Choices for the filter fields; without them the fields still accept free text.
+  useEffect(() => {
+    const controller = new AbortController()
+    getOptions(controller.signal)
+      .then(setOptions)
+      .catch(() => setOptions(null))
+    return () => controller.abort()
+  }, [])
 
   // State changes only once the response arrives; a newer request aborts the older one.
   const send = useCallback((call: Call, request: unknown) => {
@@ -82,14 +84,6 @@ export default function App() {
     }
   }
 
-  const setField = (key: keyof StructuredFields, raw: string, type: 'text' | 'number') =>
-    setFields((current) => {
-      const next = { ...current }
-      if (raw === '') delete next[key]
-      else (next as Record<string, unknown>)[key] = type === 'number' ? Number(raw) : raw
-      return next
-    })
-
   const viz = result?.visualization
 
   return (
@@ -118,13 +112,10 @@ export default function App() {
             placeholder="Ask about clinical trials…"
           />
           <details className="fields" open={Object.keys(fields).length > 0}>
-            <summary>Structured fields (optional)</summary>
-            {FIELD_INPUTS.map(({ key, label, type }) => (
-              <label key={key}>
-                {label}
-                <input type={type} value={fields[key] ?? ''} onChange={(e) => setField(key, e.target.value, type)} />
-              </label>
-            ))}
+            <summary>
+              Filters (optional){Object.keys(fields).length > 0 && ` · ${Object.keys(fields).length} set`}
+            </summary>
+            <FilterFields value={fields} onChange={setFields} options={options} />
           </details>
           <button className="primary" type="submit" disabled={loading}>
             {loading ? 'Working…' : 'Ask'}

@@ -1,7 +1,7 @@
 from cheiron.domain.analysis import Cohort, CoOccurrence, Correlation, CountBy, Dimension, Distribution, Entity, Measure
 from cheiron.domain.charts import build_visualization
 from cheiron.domain.facets import COMPLETION_DATE, INTERVENTION_NAME, LEAD_SPONSOR_CLASS, PHASES, START_DATE
-from cheiron.domain.trial import Phase, SponsorClass
+from cheiron.domain.trial import Phase, SponsorClass, Status
 from cheiron.domain.trial_filter import TrialFilter
 from cheiron.domain.visualization import (
     Channel,
@@ -326,3 +326,32 @@ def test_scatter_has_one_cited_point_per_trial() -> None:
     )
     assert viz.encoding["x"] == Channel("start_year", FieldType.QUANTITATIVE, "Start year", unit="year")
     assert "1 of 2 trials lack start year or duration from start to completion and are not shown." in viz.notes
+
+
+# --- Titles -------------------------------------------------------------------------------
+
+
+def test_titles_name_shared_filters_that_labels_do_not() -> None:
+    # "Pembrolizumab" and "Pembrolizumab in South Korea" used to get the same title.
+    korea = Cohort("Pembrolizumab", TrialFilter(intervention="pembrolizumab", country="South Korea"))
+
+    viz = build_visualization(CountBy((korea,), Dimension.START_YEAR), {"Pembrolizumab": []})
+
+    assert viz.title == "Trials started per year — Pembrolizumab · South Korea"
+
+
+def test_titles_list_shared_phases_statuses_and_years_once() -> None:
+    a = Cohort("Keytruda", TrialFilter(intervention="Keytruda", phases=frozenset({Phase.PHASE3, Phase.PHASE2}), start_year_from=2015))
+    b = Cohort("Opdivo", TrialFilter(intervention="Opdivo", phases=frozenset({Phase.PHASE2, Phase.PHASE3}), start_year_from=2015))
+
+    viz = build_visualization(CountBy((a, b), Dimension.LEAD_SPONSOR_CLASS), {"Keytruda": [], "Opdivo": []})
+
+    assert viz.title == "Trials by lead sponsor class — Keytruda vs Opdivo · Phase 2, Phase 3 · started 2015 or later"
+
+
+def test_titles_skip_filters_already_in_the_label() -> None:
+    cohort = Cohort("Lung cancer, recruiting", TrialFilter(condition="lung cancer", statuses=frozenset({Status.RECRUITING})))
+
+    viz = build_visualization(CountBy((cohort,), Dimension.COUNTRY), {"Lung cancer, recruiting": []})
+
+    assert viz.title == "Trials by country — Lung cancer, recruiting"

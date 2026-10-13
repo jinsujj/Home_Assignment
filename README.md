@@ -69,6 +69,7 @@ cd ../frontend && npm run build && npm run lint   # type-check, build, lint
 |---|---|
 | `POST /api/visualize` | Question (+ optional structured fields) → plan → visualization. |
 | `POST /api/plans` | Run a structured analysis plan directly, without the LLM. |
+| `GET /api/options` | Choices for building filters: every registry country (exact spelling, trial count), common conditions/interventions/sponsors as suggestions, phase and status codes. Cached 6 h. |
 | `GET /api/health` | Liveness. |
 | `GET /api/docs` | OpenAPI documentation generated from the Pydantic models. |
 
@@ -88,7 +89,11 @@ cd ../frontend && npm run build && npm run lint   # type-check, build, lint
 | `max_trials_per_cohort` | integer 1–10,000 | default 5,000 |
 
 Structured fields apply to every cohort and take precedence over what the planner extracted;
-the question can refer to them ("this drug"). `meta.notes` says when they were applied.
+the question can refer to them ("this drug"). `meta.notes` says when they were applied, and the
+chart title names every filter shared by all cohorts that no cohort label already names, e.g.
+"Trials started per year — Pembrolizumab · South Korea". A country filter keeps trials with at
+least one site in that country (for pembrolizumab in South Korea, 335 of 389 are multinational);
+`meta.notes` says so whenever one is used.
 
 | Status | When | Body |
 |---|---|---|
@@ -338,6 +343,7 @@ Observed while probing the live API (v2.0.5); each is handled or noted:
 | Non-drug items are registered as interventions (e.g. "Laboratory Biomarker Analysis", type `OTHER`). | Drug networks will use `DRUG` / `BIOLOGICAL` interventions only. |
 | Country filters resolve variants (`USA`, `UK`, `Korea, Republic of` match `United States`, `United Kingdom`, `South Korea`); stored values use one spelling (226 distinct). | No country normalisation needed for filtering; charts show the stored spelling. |
 | Not-yet-started trials carry anticipated start dates, including future years. | Time series note that recent and future years are provisional. |
+| `/stats/field/values` returns all 226 location countries but only the top 250 of ~134,000 conditions, ~537,000 intervention names and ~52,000 sponsors; the intervention top list is led by "Placebo", "Control", "No intervention", "Usual Care". | `GET /api/options` offers the full country list as a dropdown and the top terms (without such non-search terms, case duplicates merged) as suggestions; free text still works. |
 | Officials are often roles, departments or companies: in ~6,000 surveyed records, "Clinical Sciences & Operations" (239), "Teva Medical Expert, MD" (107), "Medical Director" (106), "Medical Monitor" (90), hotline texts, the sponsor's own name. | The ACL keeps only names that look like people (pattern list from that survey; the sponsor-name rule skips individual sponsors, who are often their own investigator). |
 | One person, several spellings: "Benoit Girard, MD" / "Benoit Girard, M.D."; "James D. Carlson, Pharm.D." in four forms. | Investigator nodes are keyed without credentials after the first comma, so surnames like "Do" or "Ma" are kept. |
 | Facilities are often generic: "Research Site" (5,880 locations in three conditions), "GSK Investigational Site" (2,264), "Local Institution", hotline texts. | Generic facilities are dropped; sites are keyed by facility + city + country, so "University Hospital, Basel" ≠ "University Hospital, Zurich". |
@@ -364,7 +370,11 @@ themselves.
 ### Frontend: a generic renderer, not a per-question UI
 
 The React demo (`frontend/`) asks questions (with optional structured fields), shows how each
-was understood, and lets the resulting plan be edited and rerun. Its rendering knows nothing
+was understood, and lets the resulting plan be edited and rerun. Filters are chosen rather than
+typed where the registry has a fixed list (country dropdown with trial counts, phase and status
+chips, year selects) and suggested elsewhere (drug, condition, sponsor), from `GET /api/options`.
+This came from use: a country typed as "korea" did filter correctly, but the chart's title did
+not show it, so the result looked unfiltered; titles now carry shared filters. Its rendering knows nothing
 about questions: it maps `type` + `encoding` to Vega-Lite (bars, time series, histograms,
 scatter) or Cytoscape (networks), and shows the citations of whatever datum is clicked. That it renders every chart kind from the spec alone
 is the evidence that the spec is renderable without guessing; building it caught one renderer
@@ -469,6 +479,7 @@ backend/
       ports.py                       TrialSource port, TrialSearchResult
       run_plan.py                    use case: fetch cohorts concurrently, build, report truncation
       planning.py                    PlanDraft (LLM contract), Question, grounding rules
+      options.py                     filter choices from the registry vocabulary, cached
       visualize.py                   use case: plan with one correction round, then run_plan
     adapters/
       inbound/http/                  FastAPI routes and Pydantic schemas

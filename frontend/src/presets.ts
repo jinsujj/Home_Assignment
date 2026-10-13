@@ -10,6 +10,8 @@ export interface StructuredFields {
   condition?: string
   sponsor?: string
   country?: string
+  phases?: string[]
+  statuses?: string[]
   start_year?: number
   end_year?: number
 }

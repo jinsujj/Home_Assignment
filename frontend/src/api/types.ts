@@ -92,3 +92,19 @@ export interface Selection {
   count: number
   citations: Citations
 }
+
+/** GET /api/options */
+export interface Choice {
+  value: string
+  label: string
+  trials: number | null
+}
+
+export interface SearchOptions {
+  countries: Choice[]
+  conditions: Choice[]
+  interventions: Choice[]
+  sponsors: Choice[]
+  phases: Choice[]
+  statuses: Choice[]
+}
