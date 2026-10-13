@@ -4,9 +4,10 @@ A backend service that turns a natural-language question about clinical trials i
 structured, frontend-renderable visualization specification, backed by the
 [ClinicalTrials.gov Data API](https://clinicaltrials.gov/data-api/api).
 
-> **Status: work in progress.** Steps 1–2 of 5 are done (ClinicalTrials.gov adapter;
-> analysis plan → visualization spec). Sections marked _planned_ describe the design that
-> later steps implement. See [Progress](#progress).
+> **Status: work in progress.** The structured pipeline runs end to end: `POST /api/plans`
+> executes an analysis plan against ClinicalTrials.gov and a React demo renders the result.
+> The natural-language planner (`POST /api/visualize`) is next. Sections marked _planned_
+> describe later steps. See [Progress](#progress).
 
 ## Contents
 
@@ -20,14 +21,6 @@ structured, frontend-renderable visualization specification, backed by the
 
 ## How to run
 
-### Install
-
-Requires [uv](https://docs.astral.sh/uv/). uv installs Python 3.14 if it is missing.
-
-```bash
-uv sync
-```
-
 ### Configure
 
 ```bash
@@ -40,30 +33,86 @@ cp .env.example .env   # then set OPENAI_API_KEY
 
 `.env` is git-ignored; `.env.example` lists the variables and the allowed models.
 
-### Start
+### Start with Docker (recommended)
 
-_Planned (step 4):_ `uv run uvicorn cheiron.main:app`. There is no HTTP entry point yet.
+```bash
+docker compose up --build
+```
+
+Open <http://localhost:8080> for the demo UI; the API is under <http://localhost:8080/api>
+with interactive docs at <http://localhost:8080/api/docs>. Two containers run: `api`
+(FastAPI, Python 3.14, non-root) and `web` (nginx serving the React build and proxying `/api`).
+
+### Local development
+
+Requires [uv](https://docs.astral.sh/uv/) (installs Python 3.14 if missing) and Node 22.
+
+```bash
+cd backend && uv sync && uv run uvicorn cheiron.main:app --reload   # API on :8000
+cd frontend && npm install && npm run dev                            # UI on :5173, proxies /api to :8000
+```
 
 ### Test
 
 ```bash
-uv run pytest            # offline: recorded API fixtures, no network
-uv run pytest -m live    # contract checks against the real ClinicalTrials.gov API
+cd backend
+uv run pytest            # offline: unit tests, recorded API fixtures, HTTP tests with a fake source
+uv run pytest -m live    # contract checks and cross-checks against the real ClinicalTrials.gov API
+cd ../frontend && npm run build && npm run lint   # type-check, build, lint
 ```
 
 ## Request / response schema
 
-_The HTTP layer is planned (step 4)._ The service will expose `POST /visualize` with OpenAPI
-docs generated from the Pydantic models, following the assignment's examples:
+| Endpoint | Purpose |
+|---|---|
+| `POST /api/plans` | Run a structured analysis plan (implemented). |
+| `POST /api/visualize` | Natural-language question → plan → visualization (_planned, step 3_). |
+| `GET /api/health` | Liveness. |
+| `GET /api/docs` | OpenAPI documentation generated from the Pydantic models. |
+
+### `POST /api/plans` request
+
+```json
+{
+  "plan": {
+    "kind": "count_by",
+    "cohorts": [
+      { "label": "Pembrolizumab", "filter": { "intervention": "pembrolizumab" } },
+      { "label": "Nivolumab", "filter": { "intervention": "nivolumab" } }
+    ],
+    "dimension": "phase"
+  },
+  "max_trials_per_cohort": 5000
+}
+```
+
+| Field | Type | Rules |
+|---|---|---|
+| `plan.kind` | `count_by` \| `co_occurrence` \| `distribution` \| `correlation` | required; selects the other fields (see [AnalysisPlan](#one-grammar-for-every-question-analysisplan)) |
+| `plan.cohorts` / `plan.cohort` | cohort(s): `{ label, filter }` | `count_by`: 1–5 cohorts with unique labels; others: one cohort |
+| `filter.condition`, `.intervention`, `.sponsor` | string ≤ 200 | optional free text; synonyms resolved by ClinicalTrials.gov |
+| `filter.country` | string ≤ 100 | optional; common variants resolved (`USA`, `UK`) |
+| `filter.phases`, `.statuses` | list of registry codes (`PHASE3`, `RECRUITING`, …) | optional; any of |
+| `filter.study_type` | `INTERVENTIONAL` \| `OBSERVATIONAL` \| `EXPANDED_ACCESS` | optional |
+| `filter.start_year_from`, `.start_year_to` | integer 1900–2100 | optional; from ≤ to |
+| `max_trials_per_cohort` | integer 1–10,000 | default 5,000; larger result sets are truncated and flagged |
+
+Unknown fields, unknown enum values and invalid combinations (e.g. `split_by` with several
+cohorts) are rejected with `422` and an explanation; ClinicalTrials.gov failures return `502`.
+
+### Response
 
 ```jsonc
-// request
-{ "query": "How has the number of trials for this drug changed over time?", // required
-  "drug_name": "Pembrolizumab" }                                            // optional structured fields
-
-// response
-{ "visualization": { "type": "time_series", "title": "...", "encoding": { ... }, "data": [ ... ] },
-  "meta": { "filters": { ... }, "source": "clinicaltrials.gov", "notes": [ ... ] } }
+{
+  "visualization": { "type": "grouped_bar_chart", "title": "Trials by phase — Pembrolizumab vs Nivolumab",
+                     "encoding": { "x": { ... }, "y": { ... }, "series": { ... } }, "data": [ ... ] },
+  "meta": {
+    "source": "clinicaltrials.gov",
+    "plan": { ... },                       // the analysis that ran, with every filter applied
+    "cohorts": [ { "label": "Pembrolizumab", "matched": 2974, "analyzed": 2974, "truncated": false }, ... ],
+    "notes": [ "175 of 2974 trials in Pembrolizumab have no registered phase and are not shown.", ... ]
+  }
+}
 ```
 
 ### Visualization spec (implemented)
@@ -166,17 +215,42 @@ The domain (`cheiron.domain`) depends on the standard library only. Pydantic is 
 
 ClinicalTrials.gov is the required source of truth and the service stores no state. A local
 mirror (e.g. DuckDB over the bulk download) would give exact, fast `GROUP BY`s, but adds a
-multi-GB ingestion step for reviewers and a freshness problem. An in-memory cache will sit
-behind the `TrialSource` port instead; a database-backed source could replace it later
-without touching the core.
+multi-GB ingestion step for reviewers and a freshness problem. A cache sits behind the
+`TrialSource` port instead (below); a database-backed source could replace it later without
+touching the core.
+
+### Caching keyed to the published data snapshot
+
+Before caching, how often the data changes was measured rather than assumed:
+
+- `/version` reports the snapshot timestamp (`dataTimestamp`). On Tuesday 2026-10-13 it still
+  read Friday `2026-10-09T09:00:05`.
+- Counting studies by `LastUpdatePostDate` over two weeks: ~800–1,200 updates are posted per
+  US business day (≈0.17% of 606,601 studies), none on weekends, none on the 2026-10-12 federal
+  holiday — updates arrive as one batch per business day.
+- Per cohort, one week of postings touched 0.9% (breast cancer) to 4.3% (recruiting lung cancer)
+  of trials.
+
+So results stay valid until the next published snapshot. `CachingTrialSource` (a decorator
+around the ClinicalTrials.gov adapter) keeps search results in memory and drops them when
+`dataTimestamp` changes, checking it at most every 10 minutes; a 24-hour maximum age bounds
+staleness if the check fails. A fixed TTL was rejected: it would discard valid results over
+weekends and serve stale ones for hours after a new snapshot. Capacity is counted in trials
+(30,000; site-bearing results count triple, as measured), evicting least recently used.
+Effect: a repeated or related question on the same cohort (phase, then start year) drops from
+~4 s to ~10 ms. Redis was considered; with one API process it adds a container and
+serialization code for no shared-state benefit, and it would implement the same port if the
+API were scaled out.
 
 ### Aggregating on our side, with a cap
 
 The API's `/stats/field/values` endpoint only reports statistics over *all* studies and accepts
 no search filter (verified in the spec), so filtered aggregations must be computed by the
 service. `CtGovTrialSource` fetches only the fields the analyses need (1,000 studies ≈ 1.9 MB,
-≈ 1.5 s per page) up to a configurable cap, and reports `total_count` alongside the analyzed
-trials so responses can say when a result is truncated.
+≈ 1.3 s per page) up to a cap (default 5,000 per cohort, at most 10,000), and reports
+`total_count` alongside the analyzed trials so responses say when a result is truncated. The
+default was raised from 2,000 after a pembrolizumab chart (2,974 trials) showed Phase 1 at
+699 instead of 1,046: flagged, but misleading in absolute terms.
 
 Alternative considered: one `countTotal` request per bucket gives exact counts for very large
 result sets but cannot produce citations and multiplies requests. It remains an option for
@@ -210,10 +284,31 @@ ClinicalTrials.gov calls records "studies" and includes observational and expand
 studies, which are not trials in the strict sense. The domain keeps the users' word, `Trial`,
 and `study_type` distinguishes the kinds; the ACL is where "study" becomes "trial".
 
+### Two entry points: structured plans and natural language
+
+`POST /api/plans` runs a plan directly; `POST /api/visualize` (step 3) will let the LLM write
+the plan. The plan's Pydantic models are shared: they validate client plans and constrain the
+LLM's structured output. The structured endpoint gives reproducible results, lets the core be
+exercised without an LLM, and serves clients that build plans themselves.
+
+### Frontend: a generic renderer, not a per-question UI
+
+The React demo (`frontend/`) knows nothing about questions. It maps `type` + `encoding` to
+Vega-Lite (bars, time series, histograms, scatter) or Cytoscape (networks), and shows the
+citations of whatever datum is clicked. That it renders every chart kind from the spec alone
+is the evidence that the spec is renderable without guessing; building it caught one renderer
+mistake (pre-binned histograms need `bin: {binned: true}` in Vega-Lite) and no spec gaps.
+
+### Monorepo and Docker
+
+One repository, two folders (`backend/`, `frontend/`) and a `docker-compose.yml`; with a single
+JS package, monorepo tooling (Nx, Turborepo) would add nothing. Docker makes the review a single
+command and needs neither uv nor Node on the reviewer's machine.
+
 ### Python 3.14
 
 The project targets Python ≥ 3.14 (lazy annotations by default; 3.12 is security-fix-only).
-uv provisions the interpreter, so reviewers do not need it preinstalled.
+uv provisions the interpreter locally and the Docker image is `python:3.14-slim`.
 
 ## Limitations and future improvements
 
@@ -234,6 +329,11 @@ uv provisions the interpreter, so reviewers do not need it preinstalled.
 - Scatter plots return one point per analyzed trial (up to the cap), which makes them the
   largest responses (measured: 2.1 MB for 2,969 pembrolizumab trials, vs 10 KB for a phase bar
   chart). With more time: drop the title duplicated between point and citation, or sample.
+- The cache lives in one process; it is lost on restart and not shared between API replicas.
+  A Redis-backed `TrialSource` decorator would remove both limits.
+- An uncached question over a large cohort takes a few seconds (pages of 1,000 studies are
+  fetched sequentially, as the API's page tokens require).
+- The demo bundle is 1.5 MB (Vega dominates); it is not code-split.
 
 _To be completed as the remaining steps land._
 
@@ -248,15 +348,20 @@ _To be completed by the author._ So far:
 - **Tools:** Claude Code (Claude Opus 5.5) as a pair programmer for API exploration, code and tests.
 - **Validation:** the OpenAPI spec (`docs/ctgov-openapi-v2.0.5.yaml`) was read and parameter
   behaviour probed against the live API before coding; offline tests use recorded API pages
-  (`tests/fixtures/ctgov/`); `pytest -m live` re-checks the contract (1,000 real studies map
+  (`backend/tests/fixtures/ctgov/`); `pytest -m live` re-checks the contract (1,000 real studies map
   without errors; synonym and exact filters hold on returned trials).
 - **Aggregation cross-check:** our phase counts for all 2,974 pembrolizumab trials equal, for
   every phase, the API's own `countTotal` for the same query filtered to that phase
-  (`tests/application/test_live_cross_check.py`).
+  (`backend/tests/application/test_live_cross_check.py`).
 - **Real-data smoke runs** of every plan kind (phase distribution, time series, drug A vs B,
   countries, phase × sponsor class, drug and sponsor–drug networks, histogram, scatter) were
   inspected before writing the unit tests; they surfaced the anticipated future start dates and
   the country-variant behaviour listed above.
+- **End to end in a browser:** every example in the demo was run against the live API through
+  the React UI, including clicking data to inspect citations; this is how the histogram
+  rendering bug and the cramped network layout were found and fixed.
+- **Docker:** `docker compose up --build` was run; the API container reports healthy, runs as a
+  non-root user, and serves plans through the nginx proxy.
 
 ## Progress
 
@@ -264,24 +369,35 @@ _To be completed by the author._ So far:
 |---|---|---|
 | 1 | Project setup, ClinicalTrials.gov adapter (ACL, query params, pagination, retries) | done |
 | 2 | AnalysisPlan grammar, aggregation with citations, chart builders, `run_plan` use case | done |
-| 3 | LLM planner + validator | next |
-| 4 | Use case, HTTP API, schema docs, citations in responses | planned |
-| 5 | Network graphs polish, example runs, README completion | planned |
+| 2b | Monorepo, `POST /api/plans`, React renderer, cache, Docker Compose | done |
+| 3 | LLM planner + validator, `POST /api/visualize`, question box in the UI | next |
+| 4 | Example runs, README completion | planned |
 
 ### Project structure
 
 ```
-src/cheiron/
-  domain/                      standard library only
-    trial.py, trial_filter.py    Trial, enums, TrialFilter
-    analysis.py                  AnalysisPlan grammar: CountBy, CoOccurrence, Distribution, Correlation
-    facets.py                    a Trial's values per dimension/entity/measure, with evidence
-    charts/                      one builder per plan kind → Visualization
-    visualization.py             output spec: chart types, channels, citations
-  application/
-    ports.py                     TrialSource port, TrialSearchResult
-    run_plan.py                  use case: fetch cohorts concurrently, build, report truncation
-  adapters/outbound/ctgov/     ClinicalTrials.gov client, query params, ACL mapper
-tests/                         unit tests, recorded API fixtures, live contract and cross-checks
-docs/ctgov-openapi-v2.0.5.yaml the API spec this code was written against
+backend/
+  src/cheiron/
+    domain/                        standard library only
+      trial.py, trial_filter.py      Trial, enums, TrialFilter
+      analysis.py                    AnalysisPlan grammar: CountBy, CoOccurrence, Distribution, Correlation
+      facets.py                      a Trial's values per dimension/entity/measure, with evidence
+      charts/                        one builder per plan kind → Visualization
+      visualization.py               output spec: chart types, channels, citations
+    application/
+      ports.py                       TrialSource port, TrialSearchResult
+      run_plan.py                    use case: fetch cohorts concurrently, build, report truncation
+    adapters/
+      inbound/http/                  FastAPI routes and Pydantic schemas
+      outbound/ctgov/                ClinicalTrials.gov client, query params, ACL mapper
+      outbound/caching.py            TrialSource decorator keyed to the data snapshot
+    main.py                        composition root
+  tests/                           unit, HTTP and cache tests, recorded fixtures, live checks
+  Dockerfile
+frontend/                          React + TypeScript (Vite): generic spec renderer
+  src/charts/toVegaLite.ts         spec → Vega-Lite
+  src/components/                  chart, network, citations, meta
+  Dockerfile, nginx.conf           static build behind nginx, /api proxied to the API
+docker-compose.yml
+docs/                              API spec (v2.0.5), Korean domain glossary
 ```
