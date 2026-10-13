@@ -1,5 +1,7 @@
 # Cheiron — ClinicalTrials.gov Query-to-Visualization Agent
 
+English | [한국어](README.ko.md)
+
 A backend service that turns a natural-language question about clinical trials into a
 structured, frontend-renderable visualization specification, backed by the
 [ClinicalTrials.gov Data API](https://clinicaltrials.gov/data-api/api).
@@ -483,7 +485,7 @@ Observed while probing the live API (v2.0.5); each is handled or noted:
 | Fields are often missing; dates come as `2021-05` or `2021-05-27`. | Every `Trial` attribute is optional; `PartialDate` keeps the registered precision instead of inventing a day. |
 | Enum values may outgrow the spec. | Unknown values are dropped per field; the study is kept. |
 | A study lists one location per site (hundreds per study). | `Trial.countries` is de-duplicated: a trial counts once per country. |
-| Non-drug items are registered as interventions (e.g. "Laboratory Biomarker Analysis", type `OTHER`). | Drug networks will use `DRUG` / `BIOLOGICAL` interventions only. |
+| Non-drug items are registered as interventions (e.g. "Laboratory Biomarker Analysis", type `OTHER`). | Drug networks use `DRUG` / `BIOLOGICAL` interventions only. |
 | Country filters resolve variants (`USA`, `UK`, `Korea, Republic of` match `United States`, `United Kingdom`, `South Korea`); stored values use one spelling (226 distinct). | No country normalisation needed for filtering; charts show the stored spelling. |
 | Not-yet-started trials carry anticipated start dates, including future years. | Time series note that recent and future years are provisional. |
 | `/stats/field/values` returns all 226 location countries but only the top 250 of ~134,000 conditions, ~537,000 intervention names and ~52,000 sponsors; the intervention top list is led by "Placebo", "Control", "No intervention", "Usual Care". | `GET /api/options` offers the full country list as a dropdown and the top terms (without such non-search terms, case duplicates merged) as suggestions; free text still works. |
@@ -574,7 +576,8 @@ uv provisions the interpreter locally and the Docker image is `python:3.14-slim`
 - The demo bundle is 1.5 MB (Vega dominates); it is not code-split.
 - Grounding proves a filter was stated, not that it was mapped correctly: a quoted "late-stage"
   mapped to `PHASE3` passes. `meta.interpretation` and the editable plan are the mitigation.
-- Planning adds ~1.5–2 s per question; answers are not cached by question (data fetches are).
+- Planning adds ~1.5–2 s to a question asked for the first time; identical questions reuse their
+  plan (see above), reworded ones are planned again.
 - One question at a time: no follow-up questions that refer to a previous answer.
 - The evaluation covers English questions; other languages are untested.
 - A trial name matching several trials with results is resolved to the largest; it is a rule,
