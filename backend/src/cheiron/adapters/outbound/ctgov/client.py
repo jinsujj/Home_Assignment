@@ -7,12 +7,13 @@ from urllib.parse import urlencode
 
 import httpx
 
-from cheiron.adapters.outbound.ctgov.mapper import FIELDS, SITE_FIELDS, TEXT_FIELDS, to_texts, to_trial
+from cheiron.adapters.outbound.ctgov.mapper import FIELDS, SITE_FIELDS, TALLY_FIELDS, TEXT_FIELDS, to_texts, to_trial
 from cheiron.adapters.outbound.ctgov.params import (
     COUNTABLE_AREAS,
     category_params,
     essie_phrase,
     mentioned_only_params,
+    tally_category_params,
     to_params,
 )
 from cheiron.adapters.outbound.ctgov.results_mapper import (
@@ -24,6 +25,8 @@ from cheiron.adapters.outbound.ctgov.results_mapper import (
 )
 from cheiron.application.ports import TermCount, TrialCandidate, TrialSearchResult, TrialSourceError, Vocabulary
 from cheiron.domain.analysis import Dimension
+from cheiron.domain.charts import DEFAULT_MAX_CITATIONS
+from cheiron.domain.charts.count_by import tally
 from cheiron.domain.results import PostedResults
 from cheiron.domain.visualization import RegistryCount
 from cheiron.domain.trial_filter import TrialFilter
@@ -82,9 +85,38 @@ class CtGovTrialSource:
         for key in keys:
             params = category_params(criteria, dimension, key)
             page = await self._get({**params, "countTotal": "true", "pageSize": "1", "fields": "NCTId"})
-            query = urlencode({**params, "countTotal": "true", "fields": "NCTId,BriefTitle"})
-            counts[key] = RegistryCount(page["totalCount"], f"{self._base_url}/studies?{query}")
+            counts[key] = RegistryCount(page["totalCount"], self._listing_url(params))
         return counts
+
+    async def tally(
+        self, criteria: TrialFilter, dimension: Dimension, limit: int
+    ) -> dict[str | int, RegistryCount] | None:
+        """Pages of 1,000 with only the fields the dimension needs; the trials are counted with
+        the domain's own facets, so tallies and charts agree."""
+        base = {
+            **to_params(criteria),
+            "fields": ",".join(("NCTId", "BriefTitle", *TALLY_FIELDS[dimension])),
+            "pageSize": str(MAX_PAGE_SIZE),
+        }
+        page = await self._get({**base, "countTotal": "true"})
+        if page["totalCount"] > limit:
+            return None
+        studies = list(page.get("studies", []))
+        while token := page.get("nextPageToken"):
+            page = await self._get({**base, "pageToken": token})
+            studies += page.get("studies", [])
+        counts: dict[str | int, RegistryCount] = {}
+        for key, bucket in tally((to_trial(s) for s in studies), dimension).items():
+            cited = bucket.citations(DEFAULT_MAX_CITATIONS)
+            params = tally_category_params(criteria, dimension, key, bucket.label)
+            counts[key] = RegistryCount(
+                bucket.count, self._listing_url(params) if params else None, cited.nct_ids, bucket.label, cited.items
+            )
+        return counts
+
+    def _listing_url(self, params: dict[str, str]) -> str:
+        """An API request whose totalCount is the category's count and whose pages list its trials."""
+        return f"{self._base_url}/studies?{urlencode({**params, 'countTotal': 'true', 'fields': 'NCTId,BriefTitle'})}"
 
     async def category_ids(
         self, criteria: TrialFilter, dimension: Dimension, key: str, limit: int

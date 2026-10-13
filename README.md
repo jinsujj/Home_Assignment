@@ -572,10 +572,26 @@ The cost is set by the API's rate limit, which the spec does not state. Measured
 about 10 requests is served at once, then about one per second (exactly 10 successes per 10 s
 window); 61 parallel requests got 53 `429`s. Counts are therefore requested one at a time,
 at most 20 per answer (`MAX_COUNT_REQUESTS`), and cached like searches. Measured with the
-searches cached: 6 counts take 1.2 s, 11 take 12 s. Above the budget, when the registry cannot
-count a dimension, or when counting fails, the analyzed trials are charted with the usual note.
-Start years (one request per year, about 50), top-N dimensions (countries, conditions,
-sponsors), networks, distributions and scatters stay on the analyzed trials.
+searches cached: 6 counts take 1.2 s, 11 take 12 s.
+
+Start years (about 50 categories), countries and other many-valued dimensions would need too
+many such requests, yet they are what the appendix's time trends and geography ask about, and
+the sample was badly off in absolute terms. Measured against the registry's own year and
+country searches: the first 5,000 breast cancer trials hold a steady 28–31% of each year's starts
+(2025: 317 shown, 1,090 real), and the first 5,000 of 18,769 recruiting cancer trials 26–28% of
+each country's (United States: 1,823 shown, 6,939 real; South Korea ranked 8th instead of 10th).
+The shape survived, the numbers did not. So when per-category counting is not possible
+(a dimension the registry cannot count, or more than 20 categories), every matching trial is
+tallied instead: pages of 1,000 with only the fields the dimension needs (~250 KB per page for
+start dates, ~470 KB for countries, against ~2.2 MB for full records), counted with the same
+domain facets as the chart, up to 25,000 trials per answer (`MAX_TALLY_TRIALS`). A tally also
+finds categories the analyzed trials missed and lists every trial behind each bar; years and
+countries carry a `registry_query`, which a live test checks against the registry's
+`AREA[StartDate]RANGE[...]` search. Breast cancer's years and recruiting cancer's countries now
+equal the registry's numbers exactly (2025: 1,090; United States: 6,939, South Korea 10th), in
+24 s and 28 s the first time and 0.1 s from cache. Beyond 25,000 trials, or when counting fails,
+the analyzed trials are charted with the usual note; networks, distributions, scatters and
+split bars stay on the analyzed trials.
 
 ### Handling real API data
 
@@ -663,9 +679,9 @@ uv provisions the interpreter locally and the Docker image is `python:3.14-slim`
 ## Limitations and future improvements
 
 - Results above the fetch cap are analyzed on the first N studies the API returns (unsorted);
-  `meta` flags this. Category counts are completed from the registry for five dimensions (see
-  above); time series, top-N charts, networks, histograms and scatters are not. With more time:
-  per-year counts for time series, paced to the rate limit (~1 minute for 50 years).
+  `meta` flags this. Counts by one dimension are completed from the registry up to 25,000
+  matching trials (see above); networks, histograms, scatters and split bars are not, and a
+  first question over a large cohort takes 20–30 s while it is tallied.
 - Free-text criteria rely on ClinicalTrials.gov's search, which also matches mentions in
   descriptions (11% of pembrolizumab trials, 24% of the first 5,000 lung cancer trials). Such
   trials are counted, as the registry defines the cohort, but flagged in their citations and

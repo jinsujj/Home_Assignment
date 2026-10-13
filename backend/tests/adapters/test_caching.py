@@ -312,3 +312,18 @@ async def test_each_trials_mentions_are_judged_once() -> None:
 
     assert inner.asked == [["NCT1"], ["NCT2"]]
     assert set(verdicts) == {"NCT1", "NCT2"}
+
+
+async def test_tallies_are_cached() -> None:
+    class Tallies(CountingSource):
+        async def tally(self, criteria, dimension, limit):
+            self.calls.append(("tally", dimension))
+            return {}
+
+    inner = Tallies()
+    cache = CachingTrialSource(inner, Version())
+
+    await cache.tally(PEMBRO, Dimension.START_YEAR, 25_000)
+    await cache.tally(PEMBRO, Dimension.START_YEAR, 25_000)
+
+    assert inner.calls == [("tally", Dimension.START_YEAR)]

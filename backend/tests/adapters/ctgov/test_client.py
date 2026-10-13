@@ -287,3 +287,41 @@ async def test_every_trial_behind_a_category_is_listed_up_to_a_limit() -> None:
 
     assert await source.category_ids(TrialFilter(), Dimension.PHASE, "PHASE3", limit=2) == ("NCT1", "NCT2")
     assert await source.category_ids(TrialFilter(), Dimension.PHASE, "PHASE3", limit=1) is None
+
+
+def _studies(*rows: tuple[str, str]) -> list[dict]:
+    return [
+        {"protocolSection": {"identificationModule": {"nctId": n, "briefTitle": f"Title {n}"}, "statusModule": {"startDateStruct": {"date": d}}}}
+        for n, d in rows
+    ]
+
+
+async def test_a_tally_counts_every_page_with_the_domains_facets() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.url.params.get("pageToken") is None:
+            return httpx.Response(200, json={"totalCount": 3, "studies": _studies(("NCT1", "2021-05"), ("NCT2", "2021")), "nextPageToken": "t"})
+        return httpx.Response(200, json={"studies": _studies(("NCT3", "2022-01-03"))})
+
+    source = _source(handler)
+    counts = await source.tally(CRITERIA, Dimension.START_YEAR, limit=3)
+
+    assert {year: c.trials for year, c in counts.items()} == {2021: 2, 2022: 1}
+    assert counts[2021].nct_ids == ("NCT1", "NCT2")
+    assert counts[2021].cited[0].evidence[0].value == "2021-05"
+    assert requests[0].url.params["fields"] == "NCTId,BriefTitle,StartDate,StartDateType"
+    reproduced = httpx.URL(counts[2021].query).params["filter.advanced"]
+    assert reproduced == "AREA[StartDate]RANGE[2021-01-01,2021-12-31]"
+    assert await source.tally(CRITERIA, Dimension.START_YEAR, limit=2) is None  # more than the limit
+
+
+async def test_tallied_names_have_no_reproducing_query() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        study = {"protocolSection": {"identificationModule": {"nctId": "NCT1"}, "conditionsModule": {"conditions": ["Melanoma"]}}}
+        return httpx.Response(200, json={"totalCount": 1, "studies": [study]})
+
+    counts = await _source(handler).tally(CRITERIA, Dimension.CONDITION, limit=10)
+
+    assert (counts["melanoma"].trials, counts["melanoma"].label, counts["melanoma"].query) == (1, "Melanoma", None)

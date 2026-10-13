@@ -49,6 +49,9 @@ class FakeSource:
     async def trial_texts(self, nct_ids):
         return {}
 
+    async def tally(self, criteria, dimension, limit):
+        return None
+
 
 async def test_a_grounded_first_draft_is_used_as_is() -> None:
     planner = ScriptedPlanner(GOOD)

@@ -25,6 +25,8 @@ from cheiron.domain.visualization import Citation, Citations, RegistryCount, Vis
 DEFAULT_MAX_TRIALS = 5000
 MAX_COUNT_REQUESTS = 20
 """Registry counts cost one request per category, and the API serves about one per second."""
+MAX_TALLY_TRIALS = 25_000
+"""Tallying every matching trial costs a request per 1,000 (about 25 s at most)."""
 MAX_LISTED_TRIALS = 20_000
 """Listing every trial behind registry counts costs a request per 1,000 (about 20 s at most)."""
 _REGISTERED_AS = {"intervention": "an intervention", "condition": "a condition", "sponsor": "a sponsor or collaborator"}
@@ -88,7 +90,7 @@ async def run_plan(
     results = await asyncio.gather(
         *(source.search(c.filter, max_trials_per_cohort, include_sites=include_sites) for c in cohorts)
     )
-    totals = await _registry_counts(plan, results, source)
+    totals, counted_how = await _registry_counts(plan, results, source)
     listing_notes = ()
     if all_citation_ids and totals and isinstance(plan, CountBy):
         listing_notes = await _list_counted_trials(plan, totals, source)
@@ -108,8 +110,8 @@ async def run_plan(
         for c, r in zip(cohorts, results, strict=True)
     )
     notes = tuple(
-        f"Counts cover all {r.matched:,} matching trials{f' for {r.label}' if r.label else ''}, counted per "
-        f"category by ClinicalTrials.gov; citations and other notes cover the first {r.analyzed:,} analyzed."
+        f"Counts cover all {r.matched:,} matching trials{f' for {r.label}' if r.label else ''}, {counted_how}; "
+        f"citations and other notes cover the first {r.analyzed:,} analyzed."
         if r.exact_counts
         else f"Analyzed the first {r.analyzed:,} of {r.matched:,} matching trials"
         f"{f' for {r.label}' if r.label else ''}; figures cover the analyzed trials only."
@@ -204,6 +206,8 @@ async def _list_counted_trials(
     try:
         for label, counts in totals.items():
             for key, count in counts.items():
+                if count.nct_ids is not None:
+                    continue  # a tally lists them already
                 ids = await source.category_ids(filters[label], plan.dimension, key, MAX_LISTED_TRIALS)
                 if ids is not None:
                     counts[key] = replace(count, nct_ids=ids)
@@ -214,31 +218,34 @@ async def _list_counted_trials(
 
 async def _registry_counts(
     plan: AnalysisPlan, results: Sequence[TrialSearchResult], source: Registry
-) -> dict[str, dict[str, RegistryCount]]:
-    """Exact category counts for truncated cohorts, by cohort label, where the registry can count them.
+) -> tuple[dict[str, dict[str | int, RegistryCount]], str]:
+    """Exact category counts for truncated cohorts, by cohort label, and how they were made.
 
-    Categories are those of the analyzed trials. Without a split, the counts are one number per
-    bar; beyond MAX_COUNT_REQUESTS, or when counting fails, the analyzed trials are charted.
+    Without a split, each bar is one number. A few categories the registry can count are asked
+    for one by one (MAX_COUNT_REQUESTS); otherwise every matching trial is tallied in light pages
+    (MAX_TALLY_TRIALS), which also finds categories the analyzed trials miss. Beyond both, or
+    when counting fails, the analyzed trials are charted; all cohorts or none, so a comparison
+    never mixes exact and partial counts.
     """
     if not isinstance(plan, CountBy) or plan.split_by:
-        return {}
-    wanted = {
-        cohort: sorted({f.key for t in result.trials for f in dimension_facets(t, plan.dimension)}, key=str)
-        for cohort, result in zip(plan.cohorts, results, strict=True)
-        if result.truncated
+        return {}, ""
+    truncated = [(c, r) for c, r in zip(plan.cohorts, results, strict=True) if r.truncated]
+    keys = {
+        c.label: sorted({f.key for t in r.trials for f in dimension_facets(t, plan.dimension)}, key=str)
+        for c, r in truncated
     }
-    if not wanted or sum(len(keys) for keys in wanted.values()) > MAX_COUNT_REQUESTS:
-        return {}
-    totals = {}
     try:
-        for cohort, keys in wanted.items():
-            counts = await source.count_by(cohort.filter, plan.dimension, keys)
-            if counts is None:
-                return {}
-            totals[cohort.label] = counts
+        if truncated and sum(len(k) for k in keys.values()) <= MAX_COUNT_REQUESTS:
+            counted = {c.label: await source.count_by(c.filter, plan.dimension, keys[c.label]) for c, _ in truncated}
+            if all(counts is not None for counts in counted.values()):
+                return counted, "counted per category by ClinicalTrials.gov"
+        if truncated and sum(r.total_count for _, r in truncated) <= MAX_TALLY_TRIALS:
+            tallied = {c.label: await source.tally(c.filter, plan.dimension, MAX_TALLY_TRIALS) for c, _ in truncated}
+            if all(counts is not None for counts in tallied.values()):
+                return tallied, "tallied from all their records"
     except TrialSourceError:
-        return {}
-    return totals
+        pass
+    return {}, ""
 
 
 async def _run_trial_results(plan: TrialResults, source: Registry) -> PlanResult:

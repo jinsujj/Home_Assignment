@@ -73,6 +73,21 @@ def category_params(criteria: TrialFilter, dimension: Dimension, key: str) -> di
     return _with_clause(to_params(criteria), f"AREA[{COUNTABLE_AREAS[dimension]}]{essie_phrase(key)}")
 
 
+def tally_category_params(
+    criteria: TrialFilter, dimension: Dimension, key: str | int, label: str
+) -> dict[str, str] | None:
+    """Trials matching `criteria` with `key` under `dimension`, when the registry's search can say so
+    exactly: enumerated values, a start year, a country. Names we normalize (conditions,
+    interventions, sponsors) have no exact equivalent."""
+    if dimension in COUNTABLE_AREAS:
+        return category_params(criteria, dimension, str(key))
+    if dimension is Dimension.START_YEAR:
+        return _with_clause(to_params(criteria), f"AREA[StartDate]RANGE[{key}-01-01,{key}-12-31]")
+    if dimension is Dimension.COUNTRY:
+        return _with_clause(to_params(criteria), f'AREA[LocationCountry]"{essie_phrase(label)}"')
+    return None
+
+
 def mentioned_only_params(criteria: TrialFilter, criterion: str) -> dict[str, str]:
     """Trials matching `criteria` whose registered fields for the free-text `criterion` (a
     REGISTERED_AREAS key) do not match it. Words, not a phrase: "Cancer of the Breast" is a

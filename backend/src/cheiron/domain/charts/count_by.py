@@ -1,7 +1,7 @@
 """CountBy -> bar chart, grouped bar chart or time series."""
 
 from collections import defaultdict
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import replace
 
 from cheiron.domain.analysis import Cohort, CountBy, Dimension
@@ -70,15 +70,19 @@ def build_count_by(
         bucket = cells.get((category, key))
         return bucket.count if bucket else 0
 
+    # Registry counts may cover categories the analyzed trials do not show (a country, a year).
+    registered = {k: c.label or str(k) for counts in totals.values() for k, c in counts.items()}
+    labels = registered | {k: bucket.label for k, bucket in categories.items()}
     cohort_keys = [c.label for c in plan.cohorts] if compare else [None]
-    ranking = {k: sum(count(k, c) for c in cohort_keys) for k in categories} if totals else None
-    category_keys, dropped = _order(dim, categories, plan.top_n, ranking)
+    ranking = {k: sum(count(k, c) for c in cohort_keys) for k in labels}
+    category_keys, dropped = _order(dim, ranking, labels, plan.top_n)
     if dropped:
         notes.append(
-            f"Showing the {len(category_keys)} most frequent of {len(categories)} {DIMENSION_TITLES[dim].lower()} values."
+            f"Showing the {len(category_keys)} most frequent of {len(labels)} {DIMENSION_TITLES[dim].lower()} values."
         )
     if split:
-        series_keys, dropped_series = _order(split, series, None)
+        series_counts = {k: bucket.count for k, bucket in series.items()}
+        series_keys, dropped_series = _order(split, series_counts, {k: bucket.label for k, bucket in series.items()}, None)
         if dropped_series:
             notes.append(
                 f"Showing the {len(series_keys)} most frequent of {len(series)} {DIMENSION_TITLES[split].lower()} values."
@@ -91,7 +95,7 @@ def build_count_by(
     series_field = "cohort" if compare else split.value if split else None
 
     def category_label(key: Key) -> str:
-        return categories[key].label if key in categories else str(key)
+        return labels.get(key, str(key))
 
     def series_label(key: Key | None) -> str:
         return series[key].label if split and key in series else str(key)
@@ -106,8 +110,9 @@ def build_count_by(
             row["trial_count"] = count(category, key)
             row["citations"] = bucket.citations(max_citations) if bucket else Citations(0, ())
             if counted := registry(category, key):
+                cited = row["citations"] if bucket else Citations(len(counted.cited), counted.cited[:max_citations])
                 listed = {"nct_ids": counted.nct_ids, "total": len(counted.nct_ids)} if counted.nct_ids else {}
-                row["citations"] = replace(row["citations"], registry_query=counted.query, **listed)
+                row["citations"] = replace(cited, registry_query=counted.query, **listed)
             rows.append(row)
 
     encoding = {
@@ -155,21 +160,29 @@ def build_count_by(
 
 
 def _order(
-    dim: Dimension, buckets: Mapping[Key, Bucket], top_n: int | None, counts: Mapping[Key, int] | None = None
+    dim: Dimension, counts: Mapping[Key, int], labels: Mapping[Key, str], top_n: int | None
 ) -> tuple[list[Key], int]:
-    """Keys in display order, and how many were dropped by the top-N limit; `counts` overrides
-    the buckets' counts for ranking."""
-    if not buckets:
+    """Keys in display order, and how many were dropped by the top-N limit."""
+    if not counts:
         return [], 0
     if dim is Dimension.START_YEAR:
-        years = [int(k) for k in buckets]
+        years = [int(k) for k in counts]
         return list(range(min(years), max(years) + 1)), 0
-    ranked = sorted(buckets, key=lambda k: (-(counts[k] if counts else buckets[k].count), buckets[k].label))
+    ranked = sorted(counts, key=lambda k: (-counts[k], labels[k]))
     limit = top_n or (DEFAULT_TOP_N if dim in HIGH_CARDINALITY else None)
     kept = ranked[:limit] if limit else ranked
     if dim is Dimension.PHASE:
         kept = [p for p in PHASE_ORDER if p in kept]
     return kept, len(ranked) - len(kept)
+
+
+def tally(trials: Iterable[Trial], dimension: Dimension) -> dict[Key, Bucket]:
+    """The trials per value of `dimension`; a trial counts once per value."""
+    buckets: defaultdict[Key, Bucket] = defaultdict(Bucket)
+    for trial in trials:
+        for value in dimension_facets(trial, dimension):
+            buckets[value.key].add(trial, value.evidences, value.label)
+    return dict(buckets)
 
 
 def _overlap(cohorts: tuple[Cohort, ...], trials_by_cohort: Mapping[str, Sequence[Trial]]) -> Bucket:

@@ -46,6 +46,13 @@ class TrialSource(Protocol):
         """
         ...
 
+    async def tally(
+        self, criteria: TrialFilter, dimension: Dimension, limit: int
+    ) -> dict[str | int, RegistryCount] | None:
+        """How many of all trials matching `criteria` have each value of `dimension`, counted from
+        their records (a request per 1,000 trials); None when more than `limit` match."""
+        ...
+
     async def category_ids(
         self, criteria: TrialFilter, dimension: Dimension, key: str, limit: int
     ) -> tuple[str, ...] | None:

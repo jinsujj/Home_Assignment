@@ -80,6 +80,15 @@ class CachingTrialSource:
             lambda _: COUNTS_WEIGHT,
         )
 
+    async def tally(
+        self, criteria: TrialFilter, dimension: Dimension, limit: int
+    ) -> dict[str | int, RegistryCount] | None:
+        return await self._cached(
+            ("tally", criteria, dimension, limit),
+            lambda: self._inner.tally(criteria, dimension, limit),
+            lambda counts: COUNTS_WEIGHT + sum(len(c.nct_ids or ()) for c in (counts or {}).values()) // 1000,
+        )
+
     async def category_ids(
         self, criteria: TrialFilter, dimension: Dimension, key: str, limit: int
     ) -> tuple[str, ...] | None:

@@ -10,6 +10,7 @@ import re
 from enum import StrEnum
 from typing import Any
 
+from cheiron.domain.analysis import Dimension
 from cheiron.domain.facets import (
     ARM_GROUP_DESCRIPTION,
     BRIEF_SUMMARY,
@@ -48,6 +49,21 @@ TEXT_FIELDS = (
     "Keyword",
     "EligibilityCriteria",
 )
+
+# What a tally of a dimension needs besides NCTId and BriefTitle; a page of 1,000 trials is
+# ~250 KB for start dates and ~470 KB for countries, against ~2.2 MB with FIELDS.
+TALLY_FIELDS = {
+    Dimension.PHASE: ("Phase",),
+    Dimension.STATUS: ("OverallStatus",),
+    Dimension.STUDY_TYPE: ("StudyType",),
+    Dimension.START_YEAR: ("StartDate", "StartDateType"),
+    Dimension.COUNTRY: ("LocationCountry",),
+    Dimension.CONDITION: ("Condition",),
+    Dimension.INTERVENTION: ("InterventionName",),
+    Dimension.INTERVENTION_TYPE: ("InterventionName", "InterventionType"),
+    Dimension.LEAD_SPONSOR: ("LeadSponsorName",),
+    Dimension.LEAD_SPONSOR_CLASS: ("LeadSponsorName", "LeadSponsorClass"),
+}
 
 # Piece names requested via the `fields` parameter; keep in sync with to_trial().
 FIELDS = (

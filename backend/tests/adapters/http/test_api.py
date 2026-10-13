@@ -26,6 +26,9 @@ class FakeSource:
     async def count_by(self, criteria, dimension, keys):
         return {k: RegistryCount(n, f"https://registry/{k}") for k, n in self.counts.items()} if self.counts else None
 
+    async def tally(self, criteria, dimension, limit):
+        return None
+
     async def category_ids(self, criteria, dimension, key, limit):
         return tuple(f"NCT{i:08d}" for i in range(self.counts[key]))
 

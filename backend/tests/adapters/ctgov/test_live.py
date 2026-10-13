@@ -7,6 +7,7 @@ import pytest
 
 from cheiron.adapters.outbound.ctgov.client import CtGovTrialSource
 from cheiron.adapters.outbound.ctgov.params import COUNTABLE_AREAS
+from cheiron.domain.analysis import Dimension
 from cheiron.domain.facets import dimension_facets
 from cheiron.domain.trial import Phase
 from cheiron.domain.trial_filter import TrialFilter
@@ -61,3 +62,13 @@ async def test_trials_that_only_mention_a_drug_do_not_register_it() -> None:
     for trial in result.trials:
         names = " ".join(n for i in trial.interventions for n in (i.name, *i.other_names)).casefold()
         assert ("pembrolizumab" in names or "keytruda" in names or "mk-3475" in names) is (trial.nct_id not in mentioned)
+
+
+async def test_tallied_years_equal_the_registrys_year_searches() -> None:
+    criteria = TrialFilter(condition="melanoma", country="South Korea")
+    async with httpx.AsyncClient(timeout=30) as http:
+        source = CtGovTrialSource(http)
+        counts = await source.tally(criteria, Dimension.START_YEAR, limit=1000)
+        for year in sorted(counts, key=lambda y: -counts[y].trials)[:2]:
+            reproduced = (await http.get(counts[year].query)).json()["totalCount"]
+            assert reproduced == counts[year].trials, year

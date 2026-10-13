@@ -7,7 +7,7 @@ from cheiron.domain.analysis import Cohort, CoOccurrence, CountBy, Dimension, Di
 from cheiron.domain.results import PostedResults
 from cheiron.domain.trial import Phase, Status
 from cheiron.domain.trial_filter import TrialFilter
-from cheiron.domain.visualization import ChartType, RegistryCount
+from cheiron.domain.visualization import ChartType, Citation, RegistryCount
 from tests.domain.factories import drug, trial
 
 pytestmark = pytest.mark.anyio
@@ -19,9 +19,17 @@ SNAPSHOT = "2026-10-09T09:00:05"
 
 class FakeSource:
     def __init__(
-        self, results: dict[TrialFilter, TrialSearchResult], counts=None, count_error=None, mentioned=None, texts=None
+        self,
+        results: dict[TrialFilter, TrialSearchResult],
+        counts=None,
+        count_error=None,
+        mentioned=None,
+        texts=None,
+        tallies=None,
     ) -> None:
         self.results = results
+        self.tallies: dict[TrialFilter, dict] = tallies or {}
+        self.tally_calls: list[tuple[TrialFilter, Dimension]] = []
         self.texts: dict[str, dict[str, tuple[str, ...]]] = texts or {}
         self.text_calls: list[tuple[str, ...]] = []
         self.mentioned: dict[tuple[TrialFilter, str], frozenset[str] | None] = mentioned or {}
@@ -37,6 +45,10 @@ class FakeSource:
             raise self.count_error
         counts = self.counts.get(criteria)
         return {k: RegistryCount(n, f"query {k}") for k, n in counts.items()} if counts else None
+
+    async def tally(self, criteria: TrialFilter, dimension: Dimension, limit: int):
+        self.tally_calls.append((criteria, dimension))
+        return self.tallies.get(criteria)
 
     async def category_ids(self, criteria: TrialFilter, dimension: Dimension, key: str, limit: int):
         n = self.counts[criteria][key]
@@ -288,3 +300,36 @@ async def test_the_mention_note_cites_the_trials_it_counts() -> None:
     [(note, cited)] = result.note_citations
     assert note == result.notes[0]
     assert (cited.total, cited.nct_ids, cited.items[0].mentioned_only) == (1, ("NCT2",), ("a",))
+
+
+async def test_dimensions_the_registry_cannot_count_are_tallied_from_all_records() -> None:
+    korea, japan = trial("NCT1", countries=("South Korea",)), trial("NCT2", countries=("Japan",))
+    tallied = {
+        "south korea": RegistryCount(310, "query korea", tuple(f"K{i}" for i in range(310)), "South Korea"),
+        "japan": RegistryCount(250, "query japan", tuple(f"J{i}" for i in range(250)), "Japan"),
+        "china": RegistryCount(900, "query china", tuple(f"C{i}" for i in range(900)), "China", (Citation.of("C0", "A trial in China", ()),)),
+    }
+    source = FakeSource({A.filter: TrialSearchResult((korea, japan), total_count=1200)}, tallies={A.filter: tallied})
+
+    result = await run_plan(CountBy((A,), Dimension.COUNTRY), source, max_trials_per_cohort=2)
+
+    assert source.tally_calls == [(A.filter, Dimension.COUNTRY)]  # countries cannot be counted per category
+    rows = [(r["country"], r["trial_count"], r["citations"].total, r["citations"].registry_query) for r in result.visualization.data]
+    # China is missing from the analyzed trials but leads the registry's tally.
+    assert rows == [("China", 900, 900, "query china"), ("South Korea", 310, 310, "query korea"), ("Japan", 250, 250, "query japan")]
+    assert result.visualization.data[0]["citations"].items[0].nct_id == "C0"
+    assert result.notes[0] == (
+        "Counts cover all 1,200 matching trials for A, tallied from all their records; "
+        "citations and other notes cover the first 2 analyzed."
+    )
+
+
+async def test_too_many_categories_to_ask_for_are_tallied_instead() -> None:
+    many = TrialSearchResult(tuple(trial(f"NCT{i}", status=s) for i, s in enumerate(Status)), total_count=99)
+    statuses = {s.value: RegistryCount(3, f"query {s}") for s in Status}
+    source = FakeSource({A.filter: many, B.filter: many}, tallies={A.filter: statuses, B.filter: statuses})
+
+    result = await run_plan(CountBy((A, B), Dimension.STATUS), source)
+
+    assert source.count_calls == [] and len(source.tally_calls) == 2
+    assert all(c.exact_counts for c in result.cohorts)

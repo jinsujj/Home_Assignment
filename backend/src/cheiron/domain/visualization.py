@@ -93,10 +93,15 @@ class RegistryCount:
     """A category counted by the registry over every matching trial, not only the analyzed ones."""
 
     trials: int
-    query: str
-    """A ClinicalTrials.gov API request whose totalCount is `trials`; its pages list them."""
+    query: str | None
+    """A ClinicalTrials.gov API request whose totalCount is `trials`; its pages list them. None
+    when the registry's search cannot express the category (names we normalize, e.g. conditions)."""
     nct_ids: tuple[str, ...] | None = None
     """Every trial counted, when they were listed."""
+    label: str = ""
+    """The category as registered, for categories the analyzed trials do not show."""
+    cited: tuple[Citation, ...] = ()
+    """A few of the trials, cited, for categories the analyzed trials do not show."""
 
 
 def _short_field(field: str) -> str:
