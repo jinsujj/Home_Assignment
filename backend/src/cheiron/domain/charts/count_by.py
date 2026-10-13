@@ -6,7 +6,7 @@ from collections.abc import Mapping, Sequence
 from cheiron.domain.analysis import Cohort, CountBy, Dimension
 from cheiron.domain.charts.common import DIMENSION_TITLES, TRIAL_COUNT, Bucket, cohort_suffix
 from cheiron.domain.facets import MULTI_VALUED, PHASE_ORDER, dimension_facets
-from cheiron.domain.trial import Trial
+from cheiron.domain.trial import DateType, Trial
 from cheiron.domain.visualization import Channel, ChartType, Citations, Evidence, FieldType, Visualization
 
 DEFAULT_TOP_N = 15
@@ -38,16 +38,16 @@ def build_count_by(
             values = dimension_facets(trial, dim)
             groups: list[tuple[Key | None, str | None, tuple[Evidence, ...]]]
             if split:
-                groups = [(f.key, f.label, (f.evidence,)) for f in dimension_facets(trial, split)]
+                groups = [(f.key, f.label, f.evidences) for f in dimension_facets(trial, split)]
             else:
                 groups = [(cohort.label if compare else None, cohort.label, ())]
             if not values or not groups:
                 skipped += 1
                 continue
             for value in values:
-                categories[value.key].add(trial, (value.evidence,), value.label)
+                categories[value.key].add(trial, value.evidences, value.label)
                 for key, label, evidence in groups:
-                    cells[value.key, key].add(trial, (value.evidence, *evidence), value.label)
+                    cells[value.key, key].add(trial, (*value.evidences, *evidence), value.label)
                     series[key].add(trial, evidence, label)
         if skipped:
             missing = DIMENSION_TITLES[dim].lower() + (f" or {DIMENSION_TITLES[split].lower()}" if split else "")
@@ -121,7 +121,13 @@ def build_count_by(
         notes.append("A trial registered with several values is counted once under each, so counts can add up to more than the number of trials.")
     if temporal and rows:
         notes.append("Years without any trial start are included with a count of 0.")
-        notes.append("Trials not yet started are dated by their anticipated start, so recent and future years are provisional.")
+        counted = [t for c in plan.cohorts for t in trials_by_cohort[c.label] if t.start_date]
+        if estimated := sum(t.start_date_type is DateType.ESTIMATED for t in counted):
+            notes.append(
+                f"{estimated:,} of {len(counted):,} counted trials have an estimated start date (not started yet, or "
+                "not updated since; their citations show startDateStruct.type ESTIMATED), so the years they fall in "
+                "are provisional."
+            )
     if compare and (overlap := _overlap(plan.cohorts, trials_by_cohort)):
         notes.append(f"Trials that match more than one cohort are counted in each ({overlap} in total).")
 

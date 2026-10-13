@@ -15,7 +15,9 @@ PHASES = "protocolSection.designModule.phases"
 OVERALL_STATUS = "protocolSection.statusModule.overallStatus"
 STUDY_TYPE = "protocolSection.designModule.studyType"
 START_DATE = "protocolSection.statusModule.startDateStruct.date"
+START_DATE_TYPE = "protocolSection.statusModule.startDateStruct.type"
 COMPLETION_DATE = "protocolSection.statusModule.completionDateStruct.date"
+COMPLETION_DATE_TYPE = "protocolSection.statusModule.completionDateStruct.type"
 ENROLLMENT = "protocolSection.designModule.enrollmentInfo.count"
 CONDITIONS = "protocolSection.conditionsModule.conditions"
 INTERVENTION_NAME = "protocolSection.armsInterventionsModule.interventions.name"
@@ -69,6 +71,12 @@ class Facet:
     """Grouping key: case- and whitespace-insensitive for free text."""
     label: str
     evidence: Evidence
+    context: tuple[Evidence, ...] = ()
+    """More of the record that qualifies the value, e.g. whether a start date is ESTIMATED."""
+
+    @property
+    def evidences(self) -> tuple[Evidence, ...]:
+        return (self.evidence, *self.context)
 
 
 def dimension_facets(trial: Trial, dimension: Dimension) -> list[Facet]:
@@ -82,7 +90,9 @@ def dimension_facets(trial: Trial, dimension: Dimension) -> list[Facet]:
             facets = [_coded(trial.study_type, STUDY_TYPE)] if trial.study_type else []
         case Dimension.START_YEAR:
             start = trial.start_date
-            facets = [Facet(start.year, str(start.year), Evidence(START_DATE, str(start)))] if start else []
+            facets = []
+            if start:
+                facets = [Facet(start.year, str(start.year), Evidence(START_DATE, str(start)), _start_type(trial))]
         case Dimension.COUNTRY:
             facets = entity_facets(trial, Entity.COUNTRY)
         case Dimension.CONDITION:
@@ -145,7 +155,7 @@ def measure_value(trial: Trial, measure: Measure) -> tuple[float, tuple[Evidence
         case Measure.START_YEAR:
             if trial.start_date is None:
                 return None
-            return trial.start_date.year, (Evidence(START_DATE, str(trial.start_date)),)
+            return trial.start_date.year, (Evidence(START_DATE, str(trial.start_date)), *_start_type(trial))
         case Measure.DURATION_MONTHS:
             start, end = trial.start_date, trial.completion_date
             if start is None or end is None or start.month is None or end.month is None:
@@ -153,7 +163,14 @@ def measure_value(trial: Trial, measure: Measure) -> tuple[float, tuple[Evidence
             months = (end.year - start.year) * 12 + (end.month - start.month)
             if months < 0:
                 return None
-            return months, (Evidence(START_DATE, str(start)), Evidence(COMPLETION_DATE, str(end)))
+            completion = (Evidence(COMPLETION_DATE, str(end)),)
+            if trial.completion_date_type:
+                completion += (Evidence(COMPLETION_DATE_TYPE, trial.completion_date_type),)
+            return months, (Evidence(START_DATE, str(start)), *_start_type(trial), *completion)
+
+
+def _start_type(trial: Trial) -> tuple[Evidence, ...]:
+    return (Evidence(START_DATE_TYPE, trial.start_date_type),) if trial.start_date_type else ()
 
 
 def label(code: str) -> str:

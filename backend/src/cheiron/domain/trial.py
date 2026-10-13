@@ -56,6 +56,14 @@ class InterventionType(StrEnum):
     OTHER = "OTHER"
 
 
+class DateType(StrEnum):
+    """Whether a registered date has happened (`DateType`): an ESTIMATED start has not, or was
+    not updated since."""
+
+    ACTUAL = "ACTUAL"
+    ESTIMATED = "ESTIMATED"
+
+
 class SponsorClass(StrEnum):
     """ClinicalTrials.gov `AgencyClass`."""
 
@@ -148,3 +156,5 @@ class Trial:
     """Names of the trial's overall officials who are identifiable people."""
     sites: tuple[Site, ...]
     """Distinct identifiable locations; empty unless the source was asked for sites."""
+    start_date_type: DateType | None = None
+    completion_date_type: DateType | None = None

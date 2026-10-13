@@ -22,6 +22,7 @@ from cheiron.domain.facets import (
     OFFICIAL_TITLE,
 )
 from cheiron.domain.trial import (
+    DateType,
     Intervention,
     InterventionType,
     PartialDate,
@@ -55,7 +56,9 @@ FIELDS = (
     "StudyType",
     "Phase",
     "StartDate",
+    "StartDateType",
     "CompletionDate",
+    "CompletionDateType",
     "EnrollmentCount",
     "Condition",
     "InterventionType",
@@ -130,6 +133,8 @@ def to_trial(study: dict[str, Any]) -> Trial:
         phases=tuple(p for p in (_enum(Phase, raw) for raw in design.get("phases", [])) if p),
         start_date=_date(status.get("startDateStruct")),
         completion_date=_date(status.get("completionDateStruct")),
+        start_date_type=_enum(DateType, (status.get("startDateStruct") or {}).get("type")),
+        completion_date_type=_enum(DateType, (status.get("completionDateStruct") or {}).get("type")),
         enrollment=design.get("enrollmentInfo", {}).get("count"),
         conditions=tuple(protocol.get("conditionsModule", {}).get("conditions", [])),
         interventions=tuple(

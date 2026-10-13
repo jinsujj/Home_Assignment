@@ -1,7 +1,14 @@
 from cheiron.domain.analysis import Cohort, CoOccurrence, Correlation, CountBy, Dimension, Distribution, Entity, Measure
 from cheiron.domain.charts import build_visualization
-from cheiron.domain.facets import COMPLETION_DATE, INTERVENTION_NAME, LEAD_SPONSOR_CLASS, PHASES, START_DATE
-from cheiron.domain.trial import InterventionType, Phase, SponsorClass, Status
+from cheiron.domain.facets import (
+    COMPLETION_DATE,
+    INTERVENTION_NAME,
+    LEAD_SPONSOR_CLASS,
+    PHASES,
+    START_DATE,
+    START_DATE_TYPE,
+)
+from cheiron.domain.trial import DateType, InterventionType, Phase, SponsorClass, Status
 from cheiron.domain.trial_filter import TrialFilter
 from cheiron.domain.visualization import (
     Channel,
@@ -445,3 +452,20 @@ def test_registry_totals_set_bar_heights_and_ranking_but_not_citations() -> None
 
     # Biological leads among the analyzed trials (2 to 1), Drug in the registry.
     assert [(r["intervention_type"], r["trial_count"], r["citations"].total) for r in viz.data] == [("Drug", 900, 1)]
+
+
+def test_estimated_start_dates_are_cited_and_counted() -> None:
+    trials = [
+        trial("NCT1", start_date="2025-03", start_date_type=DateType.ACTUAL),
+        trial("NCT2", start_date="2027-01", start_date_type=DateType.ESTIMATED),
+    ]
+
+    viz = build_visualization(CountBy((PEM,), Dimension.START_YEAR), {"Pembrolizumab": trials})
+
+    cited = {r["start_year"]: r["citations"].items[0].evidence for r in viz.data if r["trial_count"]}
+    assert cited[2027] == (Evidence(START_DATE, "2027-01"), Evidence(START_DATE_TYPE, "ESTIMATED"))
+    assert cited[2025][1] == Evidence(START_DATE_TYPE, "ACTUAL")
+    assert (
+        "1 of 2 counted trials have an estimated start date (not started yet, or not updated since; their "
+        "citations show startDateStruct.type ESTIMATED), so the years they fall in are provisional." in viz.notes
+    )

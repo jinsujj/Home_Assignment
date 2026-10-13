@@ -1,5 +1,6 @@
 from cheiron.adapters.outbound.ctgov.mapper import to_texts, to_trial
 from cheiron.domain.trial import (
+    DateType,
     Intervention,
     InterventionType,
     PartialDate,
@@ -173,3 +174,11 @@ def test_free_text_is_kept_by_field_path_without_empty_fields() -> None:
             "protocolSection.eligibilityModule.eligibilityCriteria": ("* Adults",),
         },
     )
+
+
+def test_date_types_say_whether_a_date_has_happened() -> None:
+    status = {"startDateStruct": {"date": "2027-01", "type": "ESTIMATED"}, "completionDateStruct": {"date": "2030-12", "type": "SOON"}}
+
+    mapped = to_trial({"protocolSection": {"identificationModule": {"nctId": "NCT1"}, "statusModule": status}})
+
+    assert (mapped.start_date_type, mapped.completion_date_type) == (DateType.ESTIMATED, None)  # unknown types dropped
