@@ -9,7 +9,7 @@ from cheiron.domain.charts import DEFAULT_MAX_CITATIONS, build_visualization
 from cheiron.domain.trial_filter import TrialFilter
 from cheiron.domain.visualization import Visualization
 
-DEFAULT_MAX_TRIALS = 2000
+DEFAULT_MAX_TRIALS = 5000
 
 
 @dataclass(frozen=True)

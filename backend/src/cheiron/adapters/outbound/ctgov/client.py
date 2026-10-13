@@ -23,7 +23,7 @@ class CtGovTrialSource:
         retry_delays: Sequence[float] = (1.0, 2.0, 4.0),
     ) -> None:
         self._http = http
-        self._url = f"{base_url}/studies"
+        self._base_url = base_url
         self._retry_delays = retry_delays
 
     async def search(self, criteria: TrialFilter, max_trials: int, *, include_sites: bool = False) -> TrialSearchResult:
@@ -47,10 +47,15 @@ class CtGovTrialSource:
         trials = tuple(to_trial(s) for s in studies[:max_trials])
         return TrialSearchResult(trials=trials, total_count=total)
 
-    async def _get(self, params: dict[str, str]) -> dict[str, Any]:
+    async def data_version(self) -> str:
+        """Timestamp of the data snapshot being served; it changes when new data is published
+        (in practice once per US business day, in one batch)."""
+        return (await self._get({}, path="/version"))["dataTimestamp"]
+
+    async def _get(self, params: dict[str, str], path: str = "/studies") -> dict[str, Any]:
         for attempt, delay in enumerate((*self._retry_delays, None)):
             try:
-                response = await self._http.get(self._url, params=params)
+                response = await self._http.get(self._base_url + path, params=params)
             except httpx.TransportError as exc:
                 if delay is None:
                     raise TrialSourceError(f"ClinicalTrials.gov unreachable: {exc}") from exc

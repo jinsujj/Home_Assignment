@@ -141,3 +141,11 @@ async def test_site_fields_are_requested_only_on_demand() -> None:
     assert {"LocationFacility", "LocationCity"} <= with_sites
     assert not {"LocationFacility", "LocationCity"} & without
     assert with_sites - without == {"LocationFacility", "LocationCity"}
+
+
+async def test_data_version_is_the_published_snapshot_timestamp() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/v2/version"
+        return httpx.Response(200, json={"apiVersion": "2.0.5", "dataTimestamp": "2026-10-09T09:00:05"})
+
+    assert await _source(handler).data_version() == "2026-10-09T09:00:05"
