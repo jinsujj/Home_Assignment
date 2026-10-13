@@ -70,6 +70,7 @@ cd ../frontend && npm run build && npm run lint   # type-check, build, lint
 | `POST /api/visualize` | Question (+ optional structured fields) → plan → visualization. |
 | `POST /api/plans` | Run a structured analysis plan directly, without the LLM. |
 | `GET /api/options` | Choices for building filters: every registry country (exact spelling, trial count), common conditions/interventions/sponsors as suggestions, phase and status codes. Cached 6 h. |
+| `GET /api/version` | `{"data_version": "2026-10-09T09:00:05"}`: the registry data snapshot being served (ClinicalTrials.gov's `/version` `dataTimestamp`, checked at most every 10 minutes). |
 | `GET /api/health` | Liveness. |
 | `GET /api/docs` | OpenAPI documentation generated from the Pydantic models. |
 
@@ -157,7 +158,8 @@ cohorts) are rejected with `422` and an explanation; ClinicalTrials.gov failures
     "plan": { ... },                       // the analysis that ran, with every filter applied
     "cohorts": [ { "label": "Pembrolizumab", "matched": 2974, "analyzed": 2974, "truncated": false,
                    "exact_counts": false }, ... ],   // exact_counts: see "Exact counts beyond the cap"
-    "notes": [ "175 of 2974 trials in Pembrolizumab have no registered phase and are not shown.", ... ]
+    "notes": [ "175 of 2974 trials in Pembrolizumab have no registered phase and are not shown.", ... ],
+    "data_version": "2026-10-09T09:00:05"  // the registry snapshot the answer was computed from
   }
 }
 ```
@@ -428,10 +430,12 @@ Two caches remove that:
   sees: the question (ignoring case, spacing and a trailing "?"), the structured fields, the
   correction feedback, and today's date (which resolves "in the last 5 years"). A repeat now
   takes 0.22 s, and identical questions get identical plans.
-- The demo keeps this session's answers (like a chat assistant): a "Recent" list shows them
-  instantly without any request, asking a known question again reuses its answer, and a
-  reload restores the last one. They live in `sessionStorage`, as answers reflect the
-  registry's data of the day.
+- The demo keeps this session's answers (like a chat assistant): a "Recent" list shows them,
+  asking a known question again reuses its answer, and a reload restores the last one. They
+  live in `sessionStorage`. Each answer carries the snapshot it was computed from
+  (`meta.data_version`, shown above the chart); before a stored answer is shown, the demo asks
+  `GET /api/version` (a few milliseconds, as the service caches it) and asks the question
+  again if the service now serves newer data.
 
 A reworded question still costs one planner call (~2 s).
 

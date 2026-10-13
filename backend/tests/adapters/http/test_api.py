@@ -13,6 +13,7 @@ from tests.application.test_options import FakeVocabulary
 from tests.domain.factories import drug, trial
 
 PEMBRO = {"label": "Pembrolizumab", "filter": {"intervention": "pembrolizumab"}}
+SNAPSHOT = "2026-10-09T09:00:05"
 
 
 class FakeSource:
@@ -22,6 +23,9 @@ class FakeSource:
 
     async def count_by(self, criteria, dimension, keys):
         return self.counts
+
+    async def data_version(self) -> str:
+        return SNAPSHOT
 
     async def search(self, criteria: TrialFilter, max_trials: int, *, include_sites: bool = False) -> TrialSearchResult:
         self.calls.append((criteria, max_trials, include_sites))
@@ -370,3 +374,13 @@ async def test_cohorts_say_when_counts_cover_every_matching_trial() -> None:
         {"label": "Pembrolizumab", "matched": 40, "analyzed": 1, "truncated": True, "exact_counts": True}
     ]
     assert [(r["trial_count"], r["citations"]["total"]) for r in body["visualization"]["data"]] == [(31, 1)]
+
+
+async def test_answers_carry_the_data_snapshot_they_were_computed_from() -> None:
+    client = client_for(FakeSource([trial("NCT1", phases=(Phase.PHASE2,))]))
+    plan = {"kind": "count_by", "cohorts": [PEMBRO], "dimension": "phase"}
+
+    answer = (await client.post("/api/plans", json={"plan": plan})).json()
+
+    assert answer["meta"]["data_version"] == SNAPSHOT
+    assert (await client.get("/api/version")).json() == {"data_version": SNAPSHOT}

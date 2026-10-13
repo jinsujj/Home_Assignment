@@ -77,6 +77,11 @@ class CachingTrialSource:
             ("results", nct_id.upper()), lambda: self._inner.posted_results(nct_id), lambda _: RESULTS_WEIGHT
         )
 
+    async def data_version(self) -> str | None:
+        """The snapshot the cached data belongs to, checked at most every `version_check_seconds`."""
+        await self._drop_if_new_data()
+        return self._version
+
     async def _cached(self, key: tuple, fetch: Callable[[], Awaitable[Any]], weight: Callable[[Any], int]) -> Any:
         await self._drop_if_new_data()
         cached = self._entries.get(key)

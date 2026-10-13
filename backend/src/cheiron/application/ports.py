@@ -42,6 +42,9 @@ class TrialSource(Protocol):
         """
         ...
 
+    async def data_version(self) -> str | None:
+        """Timestamp of the registry data snapshot being served; None when unknown."""
+        ...
 
 
 class PlannerError(Exception):

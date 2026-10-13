@@ -26,6 +26,13 @@ export async function getOptions(signal?: AbortSignal): Promise<SearchOptions> {
   throw new ApiError(message)
 }
 
+/** GET /api/version: the registry data snapshot being served (null when unknown). */
+export async function getVersion(signal?: AbortSignal): Promise<string | null> {
+  const response = await fetch('/api/version', { signal })
+  if (!response.ok) throw new ApiError(`${response.status} ${response.statusText}`)
+  return (await response.json()).data_version
+}
+
 async function post(path: string, request: unknown, signal?: AbortSignal): Promise<VisualizationResponse> {
   const response = await fetch(path, {
     method: 'POST',

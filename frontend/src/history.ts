@@ -11,6 +11,8 @@ export interface Entry {
   response?: VisualizationResponse
   /** An explained answer without a chart, e.g. a refusal. */
   notice?: string
+  /** The registry data snapshot behind the answer; once the service serves another, it is asked again. */
+  dataVersion?: string | null
 }
 
 const STORAGE_KEY = 'cheiron.history.v1'

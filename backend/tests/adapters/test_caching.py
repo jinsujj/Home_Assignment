@@ -266,3 +266,14 @@ async def test_category_counts_are_cached_per_filter_dimension_and_keys() -> Non
 
     assert again is first
     assert len(inner.calls) == 2
+
+
+async def test_reports_the_snapshot_its_data_belongs_to() -> None:
+    version, clock = Version(), Clock()
+    cache = CachingTrialSource(CountingSource(), version, version_check_seconds=600, clock=clock)
+
+    assert await cache.data_version() == version.value
+    version.value = "2026-10-10T09:00:00"
+    assert await cache.data_version() != version.value  # checked at most every 10 minutes
+    clock.now += 601
+    assert await cache.data_version() == "2026-10-10T09:00:00"

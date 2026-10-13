@@ -109,6 +109,8 @@ export interface Meta {
   cohorts: CohortMeta[]
   trial: TrialMeta | null
   notes: string[]
+  /** The ClinicalTrials.gov data snapshot (its /version dataTimestamp) the answer was computed from. */
+  data_version: string | null
 }
 
 /** Another chart form of the same data, with notes about this form. */

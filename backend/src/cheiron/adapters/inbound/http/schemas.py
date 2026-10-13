@@ -306,6 +306,9 @@ class Meta(BaseModel):
     cohorts: list[CohortMeta]
     trial: TrialMeta | None = Field(None, description="For trial_results: the trial used.")
     notes: list[str] = Field(description="Assumptions and caveats in plain sentences.")
+    data_version: str | None = Field(
+        None, description="The ClinicalTrials.gov data snapshot (its /version dataTimestamp) the answer was computed from."
+    )
 
 
 class VisualizationResponse(BaseModel):
@@ -349,6 +352,7 @@ class VisualizationResponse(BaseModel):
                 ],
                 trial=_trial_meta(result),
                 notes=[*planning_notes, *viz.notes, *result.notes],
+                data_version=result.data_version,
             ),
         )
 

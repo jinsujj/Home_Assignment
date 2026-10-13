@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ApiError, askQuestion, getOptions, runPlan } from './api/client'
+import { ApiError, askQuestion, getOptions, getVersion, runPlan } from './api/client'
 import type { SearchOptions, Selection, View, Visualization, VisualizationResponse } from './api/types'
 import { CitationPanel } from './components/CitationPanel'
 import { Composer } from './components/Composer'
@@ -13,6 +13,9 @@ type Call = (request: unknown, signal: AbortSignal) => Promise<VisualizationResp
 type Asked = Pick<Entry, 'key' | 'query' | 'fields'>
 
 const questionRequest = (query: string, fields: StructuredFields) => ({ query, ...fields })
+const askedOf = (entry: Entry): Asked => ({ key: entry.key, query: entry.query, fields: entry.fields })
+/** "2026-10-09T09:00:05" -> "2026-10-09 09:00" */
+const snapshot = (version: string) => version.replace('T', ' ').slice(0, 16)
 
 const describeFields = (fields: StructuredFields) =>
   Object.entries(fields)
@@ -60,6 +63,9 @@ export default function App() {
   const [options, setOptions] = useState<SearchOptions | null>(null)
   const inFlight = useRef<AbortController | null>(null)
   const restored = useRef(history.length > 0)
+  const knownVersion = useRef<string | null>(last?.dataVersion ?? null)
+  // Bumped by every start or show, so a late version check cannot replace what the user chose since.
+  const generation = useRef(0)
 
   useEffect(() => saveHistory(history), [history])
 
@@ -83,7 +89,8 @@ export default function App() {
         setViewIndex(0)
         setPlanText(JSON.stringify({ plan: response.meta.plan }, null, 2))
         setError(null)
-        if (asked) setHistory((h) => remember(h, { ...asked, response }))
+        knownVersion.current = response.meta.data_version ?? knownVersion.current
+        if (asked) setHistory((h) => remember(h, { ...asked, response, dataVersion: response.meta.data_version }))
       })
       .catch((e: unknown) => {
         if (!controller.signal.aborted) {
@@ -93,7 +100,9 @@ export default function App() {
           setResult(null)
           setError({ message, explained })
           // Explained answers (refusals, unknown trials) are answers too; failures are retried.
-          if (asked && explained) setHistory((h) => remember(h, { ...asked, notice: message }))
+          if (asked && explained) {
+            setHistory((h) => remember(h, { ...asked, notice: message, dataVersion: knownVersion.current }))
+          }
         }
       })
       .finally(() => {
@@ -102,14 +111,28 @@ export default function App() {
   }, [])
 
   // Answer the first example on a first visit; the initial state already says "loading".
+  // A restored answer is asked again if the registry has published newer data since.
   useEffect(() => {
-    if (restored.current) return
-    const { query, fields = {} } = EXAMPLES[0]
-    send(askQuestion, questionRequest(query, fields), { key: entryKey(query, fields), query, fields })
-    return () => inFlight.current?.abort()
+    if (!restored.current) {
+      const { query, fields = {} } = EXAMPLES[0]
+      send(askQuestion, questionRequest(query, fields), { key: entryKey(query, fields), query, fields })
+      return () => inFlight.current?.abort()
+    }
+    const controller = new AbortController()
+    const [last] = loadHistory()
+    getVersion(controller.signal)
+      .then((current) => {
+        if (last && current && current !== last.dataVersion && generation.current === 0) {
+          setLoading(true)
+          send(askQuestion, questionRequest(last.query, last.fields), askedOf(last))
+        }
+      })
+      .catch(() => {})
+    return () => controller.abort()
   }, [send])
 
   const start = (call: Call, request: unknown, asked?: Asked) => {
+    generation.current++
     setLoading(true)
     setError(null)
     setSelection(null)
@@ -119,6 +142,7 @@ export default function App() {
 
   /** Shows a stored answer: no planning, no query. */
   const show = (entry: Entry) => {
+    generation.current++
     inFlight.current?.abort()
     setLoading(false)
     setActiveKey(entry.key)
@@ -129,6 +153,23 @@ export default function App() {
     setViewIndex(0)
     setSelection(null)
     if (entry.response) setPlanText(JSON.stringify({ plan: entry.response.meta.plan }, null, 2))
+  }
+
+  /** A stored answer, or a fresh one when the service now serves newer registry data. */
+  const open = (entry: Entry) => {
+    const current = ++generation.current
+    getVersion()
+      .catch(() => null) // the service is unreachable: the stored answer is the best there is
+      .then((version) => {
+        if (generation.current !== current) return
+        if (version && version !== entry.dataVersion) {
+          setQuery(entry.query)
+          setFields(entry.fields)
+          start(askQuestion, questionRequest(entry.query, entry.fields), askedOf(entry))
+        } else {
+          show(entry)
+        }
+      })
   }
 
   const showTrial = (nctId: string) => {
@@ -142,7 +183,7 @@ export default function App() {
     if (!question) return
     const key = entryKey(question, structured)
     const known = history.find((entry) => entry.key === key)
-    if (known) show(known)
+    if (known) open(known)
     else start(askQuestion, questionRequest(question, structured), { key, query: question, fields: structured })
   }
 
@@ -181,7 +222,7 @@ export default function App() {
             <ol className="presets recent">
               {history.map((entry) => (
                 <li key={entry.key}>
-                  <button className={entry.key === activeKey ? 'active' : ''} onClick={() => show(entry)}>
+                  <button className={entry.key === activeKey ? 'active' : ''} onClick={() => open(entry)}>
                     {entry.query}
                     {Object.keys(entry.fields).length > 0 && <span className="muted"> ({describeFields(entry.fields)})</span>}
                     {entry.notice && <span className="muted"> · no chart</span>}
@@ -228,6 +269,9 @@ export default function App() {
             <>
               <header className={loading ? 'stale' : ''}>
                 <span className="type">{viz.type}</span>
+                {result.meta.data_version && (
+                  <span className="muted"> ClinicalTrials.gov data of {snapshot(result.meta.data_version)}</span>
+                )}
                 {loading && (
                   <span className="muted">
                     {' '}

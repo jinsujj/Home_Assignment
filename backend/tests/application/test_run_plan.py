@@ -14,6 +14,7 @@ pytestmark = pytest.mark.anyio
 
 A = Cohort("A", TrialFilter(intervention="a"))
 B = Cohort("B", TrialFilter(intervention="b"))
+SNAPSHOT = "2026-10-09T09:00:05"
 
 
 class FakeSource:
@@ -30,6 +31,9 @@ class FakeSource:
         if self.count_error:
             raise self.count_error
         return self.counts.get(criteria)
+
+    async def data_version(self) -> str:
+        return SNAPSHOT
 
     async def search(self, criteria: TrialFilter, max_trials: int, *, include_sites: bool = False) -> TrialSearchResult:
         self.calls.append((criteria, max_trials))
@@ -94,6 +98,9 @@ class ResultsRegistry:
     async def posted_results(self, nct_id):
         self.requested.append(nct_id)
         return self.results
+
+    async def data_version(self) -> str:
+        return SNAPSHOT
 
 
 async def test_trial_results_by_name_report_the_trial_and_alternatives() -> None:
@@ -163,3 +170,14 @@ async def test_analyzed_trials_are_charted_when_counting_is_unavailable() -> Non
     source = FakeSource({A.filter: many, B.filter: many})
     await run_plan(CountBy((A, B), Dimension.STATUS), source)
     assert source.count_calls == []
+
+
+async def test_answers_name_their_data_snapshot_but_do_not_depend_on_it() -> None:
+    class NoVersion(FakeSource):
+        async def data_version(self) -> str:
+            raise TrialSourceError("/version is down")
+
+    results = {A.filter: TrialSearchResult((trial("NCT1", phases=(Phase.PHASE1,)),), total_count=1)}
+
+    assert (await run_plan(CountBy((A,), Dimension.PHASE), FakeSource(results))).data_version == SNAPSHOT
+    assert (await run_plan(CountBy((A,), Dimension.PHASE), NoVersion(results))).data_version is None

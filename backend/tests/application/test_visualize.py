@@ -40,6 +40,9 @@ class FakeSource:
     async def count_by(self, criteria, dimension, keys):
         return None
 
+    async def data_version(self) -> None:
+        return None
+
 
 async def test_a_grounded_first_draft_is_used_as_is() -> None:
     planner = ScriptedPlanner(GOOD)

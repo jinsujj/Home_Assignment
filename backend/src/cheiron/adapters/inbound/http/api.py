@@ -40,6 +40,16 @@ async def health() -> dict[str, str]:
 
 
 @router.get(
+    "/version",
+    summary="The registry data snapshot being served",
+    description="ClinicalTrials.gov publishes new data about once per US business day. Answers carry the "
+    "snapshot they were computed from in `meta.data_version`; a different value here means newer data.",
+)
+async def data_version(source: Annotated[Registry, Depends(trial_source)]) -> dict[str, str | None]:
+    return {"data_version": await source.data_version()}
+
+
+@router.get(
     "/options",
     summary="Choices for building filters",
     description="Every country in the registry (exact spellings, with trial counts), the most common "

@@ -53,6 +53,8 @@ class PlanResult:
     trial: TrialReport | None = None
     alternatives: tuple[Visualization, ...] = ()
     """The same data in other chart forms (charts.views)."""
+    data_version: str | None = None
+    """The registry data snapshot the answer was computed from."""
 
 
 async def run_plan(
@@ -91,7 +93,13 @@ async def run_plan(
             "A country filter keeps trials with at least one site in that country, "
             "so multinational trials are included.",
         )
-    return PlanResult(visualization, reports, notes, alternatives=alternative_views(visualization))
+    return PlanResult(
+        visualization,
+        reports,
+        notes,
+        alternatives=alternative_views(visualization),
+        data_version=await _data_version(source),
+    )
 
 
 async def _registry_counts(
@@ -138,4 +146,13 @@ async def _run_trial_results(plan: TrialResults, source: Registry) -> PlanResult
         notes=(note,) if note else (),
         trial=TrialReport(results.nct_id, results.title, choice.alternatives if choice else ()),
         alternatives=alternative_views(visualization),
+        data_version=await _data_version(source),
     )
+
+
+async def _data_version(source: Registry) -> str | None:
+    """The answer stands without it, so an unreachable /version does not fail the answer."""
+    try:
+        return await source.data_version()
+    except TrialSourceError:
+        return None

@@ -36,7 +36,10 @@ export function MetaPanel({ meta }: { meta: Meta }) {
         <summary>Plan (interpretation and filters)</summary>
         <pre>{JSON.stringify(meta.plan, null, 2)}</pre>
       </details>
-      <p className="muted">Source: {meta.source}</p>
+      <p className="muted">
+        Source: {meta.source}
+        {meta.data_version && ` · data snapshot ${meta.data_version}`}
+      </p>
     </div>
   )
 }
