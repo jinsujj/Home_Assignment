@@ -209,7 +209,10 @@ def test_drug_network_weights_edges_by_shared_trials() -> None:
         Evidence(INTERVENTION_NAME, "A"),
         Evidence(INTERVENTION_NAME, "b"),
     )
-    assert set(viz.encoding) == {"node_id", "node_label", "node_size", "node_color", "edge_source", "edge_target", "edge_weight"}
+    assert set(viz.encoding) == {
+        "node_id", "node_label", "node_size", "node_color", "node_shape",
+        "edge_source", "edge_target", "edge_weight", "edge_strength",
+    }
 
 
 def test_network_drops_weak_links_and_unlinked_entities() -> None:
@@ -355,3 +358,47 @@ def test_titles_skip_filters_already_in_the_label() -> None:
     viz = build_visualization(CountBy((cohort,), Dimension.COUNTRY), {"Lung cancer, recruiting": []})
 
     assert viz.title == "Trials by country — Lung cancer, recruiting"
+
+
+# --- Network structure ------------------------------------------------------------------------
+
+
+def _regimen_trials() -> list:
+    """Every trial has the anchor drug P; A+B and X+Y are regimens that rarely mix."""
+    regimen = lambda i, *names: trial(f"NCT{i}", interventions=tuple(drug(n) for n in ("P", *names)))  # noqa: E731
+    return [
+        regimen(1, "A", "B"), regimen(2, "A", "B"), regimen(3, "A", "B"),
+        regimen(4, "X", "Y"), regimen(5, "X", "Y"), regimen(6, "X", "Y"),
+        regimen(7, "B", "X"), regimen(8),
+    ]
+
+
+def test_the_filtered_entity_is_an_anchor_outside_the_clusters() -> None:
+    cohort = Cohort("P", TrialFilter(intervention="p"))
+
+    viz = build_visualization(CoOccurrence(cohort, Entity.DRUG, Entity.DRUG), {"P": _regimen_trials()})
+
+    nodes = {n["label"]: n for n in viz.data["nodes"]}
+    assert nodes["P"]["anchor"] is True and nodes["P"]["community"] is None
+    assert {nodes[l]["community"] for l in ("A", "B")} == {"B"}  # named after its most frequent member
+    assert {nodes[l]["community"] for l in ("X", "Y")} == {"X"}
+    assert viz.encoding["node_color"].order == ("B", "X")
+    assert any(n.startswith("P is in 100% of the trials (the question's own filter)") for n in viz.notes)
+    assert any(n.startswith("Colours mark 2 clusters") for n in viz.notes)
+
+
+def test_entities_in_most_trials_are_anchors_too() -> None:
+    viz = build_visualization(CoOccurrence(PEM, Entity.DRUG, Entity.DRUG), {"Pembrolizumab": _regimen_trials()})
+
+    assert [n["label"] for n in viz.data["nodes"] if n["anchor"]] == ["P"]
+    assert any("(more than half of them)" in n for n in viz.notes)
+
+
+def test_links_carry_their_association_and_nodes_their_partners() -> None:
+    viz = build_visualization(CoOccurrence(PEM, Entity.DRUG, Entity.DRUG), {"Pembrolizumab": _regimen_trials()})
+
+    labels = {n["id"]: n["label"] for n in viz.data["nodes"]}
+    association = {tuple(sorted((labels[e["source"]], labels[e["target"]]))): e["association"] for e in viz.data["edges"]}
+    assert association["A", "B"] == 0.75  # 3 shared / (3 + 4 - 3)
+    assert association["B", "X"] == 0.143  # 1 / (4 + 4 - 1)
+    assert {n["label"]: n["partners"] for n in viz.data["nodes"]}["P"] == 4

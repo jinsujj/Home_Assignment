@@ -49,6 +49,9 @@ export interface NetworkNode {
   label: string
   kind: string
   trial_count: number
+  community: string | null
+  anchor: boolean
+  partners: number
   citations: Citations
 }
 
@@ -56,6 +59,7 @@ export interface NetworkEdge {
   source: string
   target: string
   trial_count: number
+  association: number
   citations: Citations
 }
 

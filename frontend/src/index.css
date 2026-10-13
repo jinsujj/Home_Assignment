@@ -365,6 +365,34 @@ main header h2 {
   color: #fff;
 }
 
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+}
+
+.swatch {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  margin-right: 5px;
+  border-radius: 50%;
+  vertical-align: -1px;
+}
+
+.swatch.ellipse,
+.swatch.round-rectangle {
+  border: 1.5px solid var(--muted);
+}
+
+.swatch.round-rectangle {
+  border-radius: 3px;
+}
+
 .view-notes {
   margin: 8px 0 0;
   padding-left: 18px;

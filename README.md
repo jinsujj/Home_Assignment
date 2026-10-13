@@ -173,7 +173,7 @@ category order to render.
 | `time_series` | `x` (temporal, `time_unit: "year"`), `y`, optional `series` | one row per year, gaps filled with 0 |
 | `histogram` | `x` (`bin_start`), `x2` (`bin_end`), `y` | one row per bin; bins are `[bin_start, bin_end)`; the last bin may be open (`bin_end: null`) |
 | `scatter_plot` | `x`, `y`, `tooltip` | one row per trial (`nct_id`, `title`, both measures) |
-| `network_graph` | `node_id`, `node_label`, `node_size`, `node_color`, `edge_source`, `edge_target`, `edge_weight` | `{ "nodes": [...], "edges": [...] }` |
+| `network_graph` | `node_id`, `node_label`, `node_size`, `node_color` (cluster), `node_shape` (entity kind), `edge_source`, `edge_target`, `edge_weight` (shared trials), `edge_strength` (association) | `{ "nodes": [...], "edges": [...] }`; nodes carry `community` (cluster name or null), `anchor` (bool), `partners` (linked nodes); edges carry `association` (Jaccard, 0–1) |
 
 Alternative views (`alternatives`) add these types; each item also carries its own `notes`:
 
@@ -293,6 +293,36 @@ country, investigator, site. Measures: enrollment, duration (months), start year
 
 Adding a question class means adding an enum member and how to read it from a `Trial`
 (`domain/facets.py`), not a new pipeline.
+
+### Networks with structure, not just counts
+
+Raw co-occurrence counts mostly restate frequency, and above all the entity the question
+filtered on: pembrolizumab is in 67% of pembrolizumab trials and links to almost every drug.
+Each network therefore makes three things explicit (`domain/charts/co_occurrence.py`):
+
+- **Anchors**: the filtered entity, or any entity in more than half of the analyzed trials, is
+  marked and left out of clustering, since it links to most nodes by construction.
+- **Clusters**: greedy modularity maximisation (Clauset–Newman–Moore) on shared-trial counts
+  among the other displayed nodes, implemented in `domain/charts/communities.py` (pure Python,
+  deterministic tie-breaking; at most 200 nodes). Each cluster is named after its most frequent
+  member. On real data the clusters are recognisable treatment patterns:
+  - pembrolizumab's partners: platinum/taxane chemotherapy (carboplatin, pemetrexed,
+    paclitaxel, …), GI regimens (oxaliplatin, leucovorin, 5-FU, irinotecan, …), other
+    checkpoint inhibitors (nivolumab, ipilimumab, atezolizumab, durvalumab) and
+    lymphodepletion for cell therapy (cyclophosphamide, fludarabine);
+  - breast cancer: chemotherapy with HER2 agents, endocrine therapy with CDK4/6 inhibitors,
+    and metastatic/triple-negative chemotherapy;
+  - pancreatic cancer: gemcitabine/nab-paclitaxel and FOLFIRINOX components.
+  Without anchors, pembrolizumab was merged into the chemotherapy cluster.
+- **Association**: each link's Jaccard index (shared trials / trials with either). It ranks
+  regimens above merely frequent pairs: in pembrolizumab's network the most frequent link,
+  pembrolizumab + carboplatin (256 trials), scores 0.13, while leucovorin + oxaliplatin
+  (28 trials, 0.43) and carboplatin + paclitaxel (135 trials, 0.40) score highest.
+
+The demo colours nodes by cluster, shapes them by entity kind, draws anchors dark, scales link
+width by shared trials and opacity by association, and adds a legend. It also disables wheel
+zoom on the graph: a full-width graph captured page scrolling, so the legend and citations below
+it could not be reached.
 
 ### One answer, several views
 
@@ -495,6 +525,9 @@ uv provisions the interpreter locally and the Docker image is `python:3.14-slim`
   thirds (grouped bars 59 KB, of which 39 KB alternatives; a melanoma sponsor–drug network
   428 KB, of which 205 KB). With more time: views would reference the primary's rows.
 - The map shows the countries of the bar chart (the top 15 by default), not every country.
+- Clusters are computed on the displayed subgraph (top 30 nodes by default) and modularity is
+  modest (Q ≈ 0.2 on the examples): clusters are tendencies, not hard partitions. Name variants
+  ("Fluorouracil", "5-fluorouracil") remain separate nodes and may land in one cluster.
 - Single-trial charts show one value scale (the first selected outcome's measure and unit; the
   rest is listed in notes) and the 15 most frequent adverse events; results are not compared
   across trials.
@@ -554,6 +587,7 @@ backend/
       charts/                        one builder per plan kind → Visualization
       visualization.py               output spec: chart types, channels, citations
       charts/views.py                alternative views derived from a primary chart's rows
+      charts/communities.py          greedy modularity clustering for networks
       geography.py, country_codes.json   registry country names -> ISO 3166-1 numeric codes
       results.py                     a trial's posted outcome measures and adverse events
     application/
