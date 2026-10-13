@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { askQuestion, getOptions, runPlan } from './api/client'
 import type { SearchOptions, Selection, VisualizationResponse } from './api/types'
 import { CitationPanel } from './components/CitationPanel'
-import { FilterFields } from './components/FilterFields'
+import { Composer } from './components/Composer'
 import { MetaPanel } from './components/MetaPanel'
 import { NetworkGraph } from './components/NetworkGraph'
 import { VegaChart } from './components/VegaChart'
@@ -92,36 +92,6 @@ export default function App() {
         <h1>Cheiron</h1>
         <p className="muted">Questions about ClinicalTrials.gov, answered with charts</p>
 
-        <form
-          className="ask"
-          onSubmit={(e) => {
-            e.preventDefault()
-            ask()
-          }}
-        >
-          <textarea
-            className="question"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault()
-                ask()
-              }
-            }}
-            placeholder="Ask about clinical trials…"
-          />
-          <details className="fields" open={Object.keys(fields).length > 0}>
-            <summary>
-              Filters (optional){Object.keys(fields).length > 0 && ` · ${Object.keys(fields).length} set`}
-            </summary>
-            <FilterFields value={fields} onChange={setFields} options={options} />
-          </details>
-          <button className="primary" type="submit" disabled={loading}>
-            {loading ? 'Working…' : 'Ask'}
-          </button>
-        </form>
-
         <h2>Example questions</h2>
         <ol className="presets">
           {EXAMPLES.map((example, index) => (
@@ -146,43 +116,54 @@ export default function App() {
       </aside>
 
       <main>
-        {error && <pre className="error">{error}</pre>}
-        {!result && loading && <p className="muted">Planning and querying ClinicalTrials.gov…</p>}
-        {result && viz && (
-          <>
-            <header className={loading ? 'stale' : ''}>
-              <span className="type">{viz.type}</span>
-              {loading && <span className="muted"> Working…</span>}
-              <h2>{viz.title}</h2>
-              {result.meta.interpretation && (
-                <p className="interpretation">
-                  <strong>Understood as:</strong> {result.meta.interpretation}
-                </p>
-              )}
-            </header>
-            <section className={`card ${loading ? 'stale' : ''}`}>
-              {viz.type === 'network_graph' ? (
-                <NetworkGraph visualization={viz} onSelect={setSelection} />
-              ) : (
-                <VegaChart visualization={viz} onSelect={setSelection} />
-              )}
-            </section>
-            <div className="columns">
-              <section className="card">
-                <h3>Citations</h3>
-                <CitationPanel selection={selection} />
+        <div className="results">
+          {error && <pre className="error">{error}</pre>}
+          {!result && loading && <p className="muted">Planning and querying ClinicalTrials.gov…</p>}
+          {result && viz && (
+            <>
+              <header className={loading ? 'stale' : ''}>
+                <span className="type">{viz.type}</span>
+                {loading && <span className="muted"> Working…</span>}
+                <h2>{viz.title}</h2>
+                {result.meta.interpretation && (
+                  <p className="interpretation">
+                    <strong>Understood as:</strong> {result.meta.interpretation}
+                  </p>
+                )}
+              </header>
+              <section className={`card ${loading ? 'stale' : ''}`}>
+                {viz.type === 'network_graph' ? (
+                  <NetworkGraph visualization={viz} onSelect={setSelection} />
+                ) : (
+                  <VegaChart visualization={viz} onSelect={setSelection} />
+                )}
               </section>
-              <section className="card">
-                <h3>Meta</h3>
-                <MetaPanel meta={result.meta} />
-              </section>
-            </div>
-            <details className="card" onToggle={(e) => setShowRaw(e.currentTarget.open)}>
-              <summary>Raw response</summary>
-              {showRaw && <pre>{JSON.stringify(result, null, 2)}</pre>}
-            </details>
-          </>
-        )}
+              <div className="columns">
+                <section className="card">
+                  <h3>Citations</h3>
+                  <CitationPanel selection={selection} />
+                </section>
+                <section className="card">
+                  <h3>Meta</h3>
+                  <MetaPanel meta={result.meta} />
+                </section>
+              </div>
+              <details className="card" onToggle={(e) => setShowRaw(e.currentTarget.open)}>
+                <summary>Raw response</summary>
+                {showRaw && <pre>{JSON.stringify(result, null, 2)}</pre>}
+              </details>
+            </>
+          )}
+        </div>
+        <Composer
+          query={query}
+          onQueryChange={setQuery}
+          fields={fields}
+          onFieldsChange={setFields}
+          options={options}
+          loading={loading}
+          onAsk={() => ask()}
+        />
       </main>
     </div>
   )

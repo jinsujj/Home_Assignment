@@ -51,11 +51,12 @@ textarea {
 
 .app {
   display: grid;
-  grid-template-columns: 360px 1fr;
-  min-height: 100vh;
+  grid-template-columns: 300px 1fr;
+  height: 100vh;
 }
 
 aside {
+  overflow-y: auto;
   padding: 20px;
   border-right: 1px solid var(--border);
   background: var(--card);
@@ -114,30 +115,6 @@ button.secondary {
   border-radius: 6px;
   background: var(--card);
   font: inherit;
-  cursor: pointer;
-}
-
-.ask {
-  display: flex;
-  flex-direction: column;
-  margin-top: 16px;
-}
-
-textarea.question {
-  min-height: 72px;
-  padding: 10px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  font: 15px/1.4 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  resize: vertical;
-}
-
-.fields {
-  margin-top: 8px;
-  color: var(--muted);
-}
-
-.fields summary {
   cursor: pointer;
 }
 
@@ -237,8 +214,107 @@ button.primary:disabled {
 }
 
 main {
-  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
   min-width: 0;
+  height: 100vh;
+}
+
+.results {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 24px;
+}
+
+/* Question box pinned to the bottom, as in chat assistants. */
+.composer {
+  padding: 10px 24px 8px;
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.composer > * {
+  max-width: 920px;
+  margin-right: auto;
+  margin-left: auto;
+}
+
+.composer-box {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 8px 8px 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--card);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+}
+
+.composer-box:focus-within {
+  border-color: var(--accent);
+}
+
+.composer textarea {
+  flex: 1;
+  min-height: 24px;
+  max-height: 160px;
+  padding: 6px 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font: 15px/1.5 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  resize: none;
+  field-sizing: content;
+}
+
+.composer-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.composer-actions button {
+  margin: 0;
+}
+
+.composer-filters {
+  max-height: 45vh;
+  margin-bottom: 8px;
+  padding: 4px 14px 12px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+}
+
+.active-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.active-filters .chip button {
+  margin-left: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.hint {
+  margin-top: 6px;
+  margin-bottom: 0;
+  color: var(--muted);
+  font-size: 11px;
+  text-align: center;
+}
+
+button.secondary.on {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 main header h2 {
@@ -341,5 +417,13 @@ pre {
   .app,
   .columns {
     grid-template-columns: 1fr;
+  }
+
+  .app {
+    height: auto;
+  }
+
+  main {
+    height: 100vh;
   }
 }
