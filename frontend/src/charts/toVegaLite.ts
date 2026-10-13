@@ -18,7 +18,8 @@ function axisChannel(c: Channel) {
     type: c.type,
     title: title(c),
     ...(c.order ? { sort: c.order } : {}),
-    ...(categorical ? { axis: { labelAngle: -30, labelLimit: 180 } } : {}),
+    // A few short categories read level; many are tilted so they do not collide.
+    ...(categorical ? { axis: { labelAngle: (c.order?.length ?? Infinity) <= 6 ? 0 : -30, labelLimit: 180 } } : {}),
   }
 }
 
@@ -33,6 +34,11 @@ function scaledChannel(c: Channel, rows: Row[]) {
 
 function seriesChannel(c: Channel) {
   return { field: c.field, type: c.type, title: c.title, ...(c.order ? { sort: c.order, scale: { domain: c.order } } : {}) }
+}
+
+function colorChannel(c: Channel) {
+  // Ordered series (e.g. phases) would get shades of one blue, too close to tell apart.
+  return c.type === 'ordinal' ? { ...seriesChannel(c), scale: { domain: c.order ?? undefined, scheme: 'tableau10' } } : seriesChannel(c)
 }
 
 function rowChannel(c: Channel) {
@@ -50,6 +56,11 @@ export function toVegaLite(viz: Visualization): TopLevelSpec {
     width: 'container' as const,
     height: 380,
     autosize: { type: 'fit' as const, contains: 'padding' as const },
+    config: {
+      font: "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif",
+      axis: { labelFontSize: 12, titleFontSize: 13, titlePadding: 10 },
+      legend: { labelFontSize: 12, titleFontSize: 13, symbolSize: 120 },
+    },
   }
   const tooltipFields = () => tips(x, series, y, tooltip)
 
@@ -58,7 +69,7 @@ export function toVegaLite(viz: Visualization): TopLevelSpec {
       return { ...base, data: { values: rows }, mark: 'bar', encoding: { x: axisChannel(x), y: axisChannel(y), tooltip: tooltipFields() } }
 
     case 'grouped_bar_chart': {
-      const grouped = { x: axisChannel(x), xOffset: seriesChannel(series), color: seriesChannel(series) }
+      const grouped = { x: axisChannel(x), xOffset: seriesChannel(series), color: colorChannel(series) }
       if (!lower || !upper) {
         return { ...base, data: { values: rows }, mark: 'bar', encoding: { ...grouped, y: axisChannel(y), tooltip: tooltipFields() } }
       }
@@ -89,7 +100,7 @@ export function toVegaLite(viz: Visualization): TopLevelSpec {
         encoding: {
           x: axisChannel(x),
           y: axisChannel(y),
-          ...(series ? { color: seriesChannel(series) } : {}),
+          ...(series ? { color: colorChannel(series) } : {}),
           tooltip: tooltipFields(),
         },
       }
@@ -140,7 +151,7 @@ export function toVegaLite(viz: Visualization): TopLevelSpec {
         encoding: {
           x: axisChannel(x),
           y: { field: y.field, type: 'quantitative', title: title(y), stack: 'zero', scale: { domain: [0, 100] } },
-          color: seriesChannel(color),
+          color: colorChannel(color),
           tooltip: tips(x, color, y),
         },
       }
@@ -166,7 +177,7 @@ export function toVegaLite(viz: Visualization): TopLevelSpec {
         mark: { type: 'arc', innerRadius: 80 },
         encoding: {
           theta: { field: theta.field, type: 'quantitative', stack: true },
-          color: seriesChannel(color),
+          color: colorChannel(color),
           tooltip: tips(color, theta, tooltip),
         },
       }
@@ -213,7 +224,7 @@ export function toVegaLite(viz: Visualization): TopLevelSpec {
       return {
         ...base,
         data: { values: rows },
-        encoding: { y: rowChannel(y), yOffset: seriesChannel(series), color: seriesChannel(series) },
+        encoding: { y: rowChannel(y), yOffset: seriesChannel(series), color: colorChannel(series) },
         layer: [
           {
             mark: { type: 'rule', strokeWidth: 2 },

@@ -96,9 +96,9 @@ export function NetworkGraph({ visualization, onSelect }: Props) {
             shape: 'data(shape)' as never,
             width: `mapData(weight, ${nodeMin}, ${Math.max(nodeMax, nodeMin + 1)}, 14, 56)`,
             height: `mapData(weight, ${nodeMin}, ${Math.max(nodeMax, nodeMin + 1)}, 14, 56)`,
-            'font-size': 9,
+            'font-size': 11,
             'text-wrap': 'ellipsis',
-            'text-max-width': '120px',
+            'text-max-width': '140px',
             'text-valign': 'bottom',
             'text-margin-y': 2,
             'text-background-color': '#fff',
@@ -130,6 +130,15 @@ export function NetworkGraph({ visualization, onSelect }: Props) {
         numIter: 2500,
       },
     })
+
+    // The layout comes out about square while the chart is wide: stretch it sideways (up to 2x)
+    // so labels get the empty room instead of overlapping in the middle.
+    const box = cy.nodes().boundingBox()
+    const stretch = Math.min(cy.width() / cy.height() / (box.w / Math.max(box.h, 1)), 2)
+    if (stretch > 1.1) {
+      cy.nodes().positions((n) => ({ x: box.x1 + (n.position('x') - box.x1) * stretch, y: n.position('y') }))
+      cy.fit(undefined, 30)
+    }
 
     cy.on('tap', 'node', (event) => {
       const node = nodes[event.target.data('index')]

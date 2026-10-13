@@ -1,12 +1,12 @@
 :root {
   --text: #1d2228;
-  --muted: #66707a;
+  --muted: #56606b;
   --border: #dde2e7;
   --bg: #f6f7f9;
   --card: #fff;
   --accent: #2f6fdd;
   --error: #b42318;
-  font: 14px/1.5 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font: 15px/1.6 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   color: var(--text);
   background: var(--bg);
 }
@@ -41,7 +41,7 @@ code,
 pre,
 textarea {
   font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .muted,
@@ -94,7 +94,7 @@ aside {
 
 button.link.small {
   margin: 0 0 0 4px;
-  font-size: 11px;
+  font-size: 12px;
   text-transform: none;
   letter-spacing: 0;
 }
@@ -174,7 +174,7 @@ button.secondary {
   background: var(--card);
   color: var(--text);
   font: inherit;
-  font-size: 12px;
+  font-size: 13px;
   cursor: pointer;
 }
 
@@ -320,7 +320,7 @@ main {
   margin-top: 6px;
   margin-bottom: 0;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   text-align: center;
 }
 
@@ -384,7 +384,7 @@ main header h2 {
   margin: 8px 0 0;
   padding: 0;
   list-style: none;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .swatch {
@@ -409,7 +409,7 @@ main header h2 {
   margin: 8px 0 0;
   padding-left: 18px;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .stale {
@@ -487,11 +487,15 @@ main header h2 {
   border-radius: 8px;
   background: #fff4e5;
   color: #9a5b00;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .notes {
   padding-left: 18px;
+}
+
+.notes li {
+  margin-bottom: 6px;
 }
 
 pre {
@@ -563,7 +567,7 @@ pre {
   overflow-y: auto;
   list-style: none;
   font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .citations .mentioned {
@@ -625,20 +629,20 @@ pre {
   padding: 1px 6px;
   border-radius: 4px;
   background: rgba(255, 255, 255, 0.25);
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.05em;
 }
 
 .ai-check-hint {
   flex: 1 1 220px;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .ai-check-problem {
   flex-basis: 100%;
   color: var(--error);
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .line-swatch {
