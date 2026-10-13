@@ -8,9 +8,21 @@ single stray quote makes the API reject the whole request.
 
 import re
 
+from cheiron.domain.analysis import Dimension
 from cheiron.domain.trial_filter import TrialFilter
 
 _ESSIE_SYNTAX = re.compile(r'["()\[\]\\]')
+
+# Search areas whose values are the domain's category keys. Verified live: for all 4,269
+# Alzheimer's disease trials, the registry's count of every category (38 in all) equals
+# our own aggregation.
+COUNTABLE_AREAS = {
+    Dimension.PHASE: "Phase",
+    Dimension.STATUS: "OverallStatus",
+    Dimension.STUDY_TYPE: "StudyType",
+    Dimension.LEAD_SPONSOR_CLASS: "LeadSponsorClass",
+    Dimension.INTERVENTION_TYPE: "InterventionType",
+}
 
 
 def to_params(criteria: TrialFilter) -> dict[str, str]:
@@ -40,6 +52,14 @@ def to_params(criteria: TrialFilter) -> dict[str, str]:
     if advanced:
         params["filter.advanced"] = " AND ".join(advanced)
 
+    return params
+
+
+def category_params(criteria: TrialFilter, dimension: Dimension, key: str) -> dict[str, str]:
+    """Trials matching `criteria` that also register `key` under `dimension` (a COUNTABLE_AREAS key)."""
+    params = to_params(criteria)
+    clause = f"AREA[{COUNTABLE_AREAS[dimension]}]{essie_phrase(key)}"
+    params["filter.advanced"] = f"{params['filter.advanced']} AND {clause}" if "filter.advanced" in params else clause
     return params
 
 

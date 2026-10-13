@@ -1,7 +1,7 @@
 from cheiron.domain.analysis import Cohort, CoOccurrence, Correlation, CountBy, Dimension, Distribution, Entity, Measure
 from cheiron.domain.charts import build_visualization
 from cheiron.domain.facets import COMPLETION_DATE, INTERVENTION_NAME, LEAD_SPONSOR_CLASS, PHASES, START_DATE
-from cheiron.domain.trial import Phase, SponsorClass, Status
+from cheiron.domain.trial import InterventionType, Phase, SponsorClass, Status
 from cheiron.domain.trial_filter import TrialFilter
 from cheiron.domain.visualization import (
     Channel,
@@ -434,3 +434,14 @@ def test_links_carry_their_association_and_nodes_their_partners() -> None:
     assert association["A", "B"] == 0.75  # 3 shared / (3 + 4 - 3)
     assert association["B", "X"] == 0.143  # 1 / (4 + 4 - 1)
     assert {n["label"]: n["partners"] for n in viz.data["nodes"]}["P"] == 4
+
+
+def test_registry_totals_set_bar_heights_and_ranking_but_not_citations() -> None:
+    biological = drug("b", InterventionType.BIOLOGICAL)
+    trials = [trial("NCT1", interventions=(drug("a"),)), trial("NCT2", interventions=(biological,)), trial("NCT3", interventions=(biological,))]
+    plan = CountBy((PEM,), Dimension.INTERVENTION_TYPE, top_n=1)
+
+    viz = build_visualization(plan, {"Pembrolizumab": trials}, totals={"Pembrolizumab": {"DRUG": 900, "BIOLOGICAL": 50}})
+
+    # Biological leads among the analyzed trials (2 to 1), Drug in the registry.
+    assert [(r["intervention_type"], r["trial_count"], r["citations"].total) for r in viz.data] == [("Drug", 900, 1)]

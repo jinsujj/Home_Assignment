@@ -20,6 +20,7 @@ export function MetaPanel({ meta }: { meta: Meta }) {
                 <td>
                   {c.analyzed.toLocaleString()}
                   {c.truncated && <span className="badge">truncated</span>}
+                  {c.exact_counts && <span className="badge">exact counts</span>}
                 </td>
               </tr>
             ))}

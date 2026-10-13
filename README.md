@@ -155,7 +155,8 @@ cohorts) are rejected with `422` and an explanation; ClinicalTrials.gov failures
     "query": "Compare phases for Keytruda vs Opdivo",            // /api/visualize only
     "interpretation": "Compare trial phases for Keytruda versus Opdivo.",   // /api/visualize only
     "plan": { ... },                       // the analysis that ran, with every filter applied
-    "cohorts": [ { "label": "Pembrolizumab", "matched": 2974, "analyzed": 2974, "truncated": false }, ... ],
+    "cohorts": [ { "label": "Pembrolizumab", "matched": 2974, "analyzed": 2974, "truncated": false,
+                   "exact_counts": false }, ... ],   // exact_counts: see "Exact counts beyond the cap"
     "notes": [ "175 of 2974 trials in Pembrolizumab have no registered phase and are not shown.", ... ]
   }
 }
@@ -209,7 +210,9 @@ Every row, node and edge carries `citations` (here the "Phase 3" bar for pembrol
     "nct_ids": null } }
 ```
 
-`total` is the number of trials behind the datum; `items` spells out the first few (default 5).
+`total` is the number of analyzed trials behind the datum; `items` spells out the first few
+(default 5). It is below `trial_count` when the counts come from the registry (see "Exact
+counts beyond the cap").
 `evidence` names the field of the API's study JSON and the value exactly as registered that put
 the trial into this datum (two entries for an edge, one per endpoint; value and interval limits
 for a posted result); `excerpt` is the same evidence as one line of text, the shape the
@@ -442,9 +445,27 @@ service. `CtGovTrialSource` fetches only the fields the analyses need (1,000 stu
 default was raised from 2,000 after a pembrolizumab chart (2,974 trials) showed Phase 1 at
 699 instead of 1,046: flagged, but misleading in absolute terms.
 
-Alternative considered: one `countTotal` request per bucket gives exact counts for very large
-result sets but cannot produce citations and multiplies requests. It remains an option for
-time series when truncation matters.
+### Exact counts beyond the cap
+
+A truncated cohort used to be charted from its first 5,000 trials: breast cancer (16,899 trials)
+showed Phase 2 at 1,362 instead of 4,590. For a `count_by` without a split over phase, status,
+study type, lead sponsor class or intervention type, `run_plan` now asks the registry how many
+of *all* matching trials register each category the analyzed trials show (one `countTotal`
+request each, the category added to the cohort's own criteria as an Essie `AREA[...]` clause).
+Bars show those counts, citations still come from the analyzed trials, and `meta.cohorts[]`
+says `exact_counts: true`. Before relying on it, the registry's count of every category (38
+over five dimensions) was compared with our own aggregation for all 4,269 Alzheimer's disease
+trials: all equal. A live test repeats the comparison on a smaller cohort (melanoma trials in
+South Korea).
+
+The cost is set by the API's rate limit, which the spec does not state. Measured: a burst of
+about 10 requests is served at once, then about one per second (exactly 10 successes per 10 s
+window); 61 parallel requests got 53 `429`s. Counts are therefore requested one at a time,
+at most 20 per answer (`MAX_COUNT_REQUESTS`), and cached like searches. Measured with the
+searches cached: 6 counts take 1.2 s, 11 take 12 s. Above the budget, when the registry cannot
+count a dimension, or when counting fails, the analyzed trials are charted with the usual note.
+Start years (one request per year, about 50), top-N dimensions (countries, conditions,
+sponsors), networks, distributions and scatters stay on the analyzed trials.
 
 ### Handling real API data
 
@@ -523,11 +544,14 @@ uv provisions the interpreter locally and the Docker image is `python:3.14-slim`
 ## Limitations and future improvements
 
 - Results above the fetch cap are analyzed on the first N studies the API returns (unsorted);
-  `meta` will flag this. With more time: exact per-bucket counts for large time series.
+  `meta` flags this. Category counts are completed from the registry for five dimensions (see
+  above); time series, top-N charts, networks, histograms and scatters are not. With more time:
+  per-year counts for time series, paced to the rate limit (~1 minute for 50 years).
 - Free-text criteria rely on ClinicalTrials.gov's relevance search, which also matches mentions
   in descriptions (e.g. a fecal-transplant study that mentions pembrolizumab).
-- Rate limits are not documented in the API spec; the client retries `429` but does not
-  throttle proactively.
+- Rate limits are not documented in the API spec (measured: a burst of ~10, then ~1 request
+  per second). The client retries `429` with backoff but does not throttle proactively, so a
+  first question over two large cohorts takes ~30 s (10 pages plus 16 counts).
 - Entity names are matched ignoring case and spacing only. In a pembrolizumab drug network,
   "Pembrolizumab" is a hub, but registrations as "MK-3475" or "favezelimab/pembrolizumab" stay
   separate nodes. With more time: merge via the registered `otherNames` and a synonym source.

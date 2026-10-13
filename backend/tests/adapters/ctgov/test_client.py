@@ -5,6 +5,8 @@ import pytest
 
 from cheiron.adapters.outbound.ctgov.client import CtGovTrialSource
 from cheiron.application.ports import TermCount, TrialSourceError, Vocabulary
+from cheiron.domain.analysis import Dimension
+from cheiron.domain.trial import Phase
 from cheiron.domain.trial_filter import TrialFilter
 from tests.conftest import load_fixture
 
@@ -206,3 +208,27 @@ async def test_posted_results_are_mapped() -> None:
     results = await _source(lambda _: httpx.Response(200, json=study)).posted_results("NCT02578680")
 
     assert results.nct_id == "NCT02578680" and len(results.outcomes) == 7
+
+
+async def test_counts_each_category_with_one_count_only_request() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json={"totalCount": len(requests) * 10, "studies": []})
+
+    criteria = TrialFilter(condition="breast cancer", phases=frozenset({Phase.PHASE2, Phase.PHASE3}))
+    counts = await _source(handler).count_by(criteria, Dimension.PHASE, ["PHASE2", "PHASE3"])
+
+    assert counts == {"PHASE2": 10, "PHASE3": 20}
+    params = requests[0].url.params
+    # The category is added to the cohort's own criteria, so a Phase 2/3 trial counts under both.
+    assert params["filter.advanced"] == "AREA[Phase](PHASE2 OR PHASE3) AND AREA[Phase]PHASE2"
+    assert (params["query.cond"], params["countTotal"], params["pageSize"]) == ("breast cancer", "true", "1")
+
+
+async def test_dimensions_the_registry_cannot_count_send_no_request() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError("no request expected")
+
+    assert await _source(handler).count_by(CRITERIA, Dimension.START_YEAR, ["2020"]) is None

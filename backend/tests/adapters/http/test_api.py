@@ -16,9 +16,12 @@ PEMBRO = {"label": "Pembrolizumab", "filter": {"intervention": "pembrolizumab"}}
 
 
 class FakeSource:
-    def __init__(self, trials=(), total: int | None = None, error: Exception | None = None) -> None:
-        self.trials, self.total, self.error = tuple(trials), total, error
+    def __init__(self, trials=(), total: int | None = None, error: Exception | None = None, counts=None) -> None:
+        self.trials, self.total, self.error, self.counts = tuple(trials), total, error, counts
         self.calls: list[tuple[TrialFilter, int, bool]] = []
+
+    async def count_by(self, criteria, dimension, keys):
+        return self.counts
 
     async def search(self, criteria: TrialFilter, max_trials: int, *, include_sites: bool = False) -> TrialSearchResult:
         self.calls.append((criteria, max_trials, include_sites))
@@ -84,7 +87,9 @@ async def test_runs_a_plan_and_returns_spec_with_citations_and_meta() -> None:
     meta = body["meta"]
     assert meta["source"] == "clinicaltrials.gov"
     assert meta["plan"]["cohorts"][0]["filter"]["intervention"] == "pembrolizumab"
-    assert meta["cohorts"] == [{"label": "Pembrolizumab", "matched": 40, "analyzed": 2, "truncated": True}]
+    assert meta["cohorts"] == [
+        {"label": "Pembrolizumab", "matched": 40, "analyzed": 2, "truncated": True, "exact_counts": False}
+    ]
     assert "1 of 2 trials have no registered phase and are not shown." in meta["notes"]
     assert any(n.startswith("Analyzed the first 2 of 40") for n in meta["notes"])
 
@@ -353,3 +358,15 @@ async def test_every_contributing_trial_is_listed_on_request() -> None:
         cited = view["data"][0]["citations"]
         assert (cited["total"], len(cited["items"])) == (7, 5)
         assert cited["nct_ids"] == [f"NCT{i}" for i in range(7)]
+
+
+async def test_cohorts_say_when_counts_cover_every_matching_trial() -> None:
+    source = FakeSource([trial("NCT1", phases=(Phase.PHASE2,))], total=40, counts={"PHASE2": 31})
+    plan = {"kind": "count_by", "cohorts": [PEMBRO], "dimension": "phase"}
+
+    body = (await client_for(source).post("/api/plans", json={"plan": plan, "max_trials_per_cohort": 1})).json()
+
+    assert body["meta"]["cohorts"] == [
+        {"label": "Pembrolizumab", "matched": 40, "analyzed": 1, "truncated": True, "exact_counts": True}
+    ]
+    assert [(r["trial_count"], r["citations"]["total"]) for r in body["visualization"]["data"]] == [(31, 1)]

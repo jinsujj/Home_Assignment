@@ -5,6 +5,7 @@ import pytest
 from cheiron.adapters.outbound.caching import CachingPlanner, CachingTrialSource
 from cheiron.application.planning import Question, StructuredFields
 from cheiron.application.ports import PlannerError, TrialSearchResult, TrialSourceError
+from cheiron.domain.analysis import Dimension
 from cheiron.domain.trial_filter import TrialFilter
 from tests.application.planning_factories import draft
 from tests.domain.factories import trial
@@ -27,6 +28,10 @@ class CountingSource:
         if self.fail:
             raise TrialSourceError("down")
         return TrialSearchResult(tuple(trial(f"NCT{i}") for i in range(self.size)), self.size)
+
+    async def count_by(self, criteria: TrialFilter, dimension, keys) -> dict[str, int]:
+        self.calls.append(("count", criteria, dimension, tuple(keys)))
+        return {k: 1 for k in keys}
 
     async def find_trials(self, name: str) -> tuple:
         self.calls.append(("find", name))
@@ -249,3 +254,15 @@ async def test_planner_failures_are_not_cached_and_old_plans_are_evicted() -> No
         await planner.draft(Question(text))
 
     assert [text for text, _ in inner.calls] == ["a", "a", "b", "c", "a"]
+
+
+async def test_category_counts_are_cached_per_filter_dimension_and_keys() -> None:
+    inner = CountingSource()
+    cache = CachingTrialSource(inner, Version())
+
+    first = await cache.count_by(PEMBRO, Dimension.PHASE, ["PHASE2", "PHASE3"])
+    again = await cache.count_by(PEMBRO, Dimension.PHASE, ("PHASE2", "PHASE3"))
+    await cache.count_by(PEMBRO, Dimension.STATUS, ["PHASE2", "PHASE3"])
+
+    assert again is first
+    assert len(inner.calls) == 2

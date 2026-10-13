@@ -6,6 +6,7 @@ from enum import StrEnum
 from typing import Literal, Protocol
 
 from cheiron.application.planning import PlanDraft, Question
+from cheiron.domain.analysis import Dimension
 from cheiron.domain.results import PostedResults
 from cheiron.domain.trial import Trial
 from cheiron.domain.trial_filter import TrialFilter
@@ -33,6 +34,14 @@ class TrialSource(Protocol):
         `Trial.sites` is only filled with `include_sites`, as sites make responses much larger.
         """
         ...
+
+    async def count_by(self, criteria: TrialFilter, dimension: Dimension, keys: Sequence[str]) -> dict[str, int] | None:
+        """How many of all trials matching `criteria` register each key under `dimension`.
+
+        Unlike `search`, there is no cap. None when the source cannot count this dimension.
+        """
+        ...
+
 
 
 class PlannerError(Exception):

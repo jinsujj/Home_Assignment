@@ -7,7 +7,7 @@ from typing import Any
 import httpx
 
 from cheiron.adapters.outbound.ctgov.mapper import FIELDS, SITE_FIELDS, to_trial
-from cheiron.adapters.outbound.ctgov.params import to_params
+from cheiron.adapters.outbound.ctgov.params import COUNTABLE_AREAS, category_params, to_params
 from cheiron.adapters.outbound.ctgov.results_mapper import (
     CANDIDATE_FIELDS,
     NAME_AREAS,
@@ -16,6 +16,7 @@ from cheiron.adapters.outbound.ctgov.results_mapper import (
     to_results,
 )
 from cheiron.application.ports import TermCount, TrialCandidate, TrialSearchResult, TrialSourceError, Vocabulary
+from cheiron.domain.analysis import Dimension
 from cheiron.domain.results import PostedResults
 from cheiron.domain.trial_filter import TrialFilter
 
@@ -60,6 +61,19 @@ class CtGovTrialSource:
 
         trials = tuple(to_trial(s) for s in studies[:max_trials])
         return TrialSearchResult(trials=trials, total_count=total)
+
+    async def count_by(self, criteria: TrialFilter, dimension: Dimension, keys: Sequence[str]) -> dict[str, int] | None:
+        """One count-only request per key. They go one at a time: measured, the API answers a
+        burst of about 10 requests and then about one per second, rejecting the rest with 429."""
+        if dimension not in COUNTABLE_AREAS:
+            return None
+        counts = {}
+        for key in keys:
+            page = await self._get(
+                {**category_params(criteria, dimension, key), "countTotal": "true", "pageSize": "1", "fields": "NCTId"}
+            )
+            counts[key] = page["totalCount"]
+        return counts
 
     async def data_version(self) -> str:
         """Timestamp of the data snapshot being served; it changes when new data is published

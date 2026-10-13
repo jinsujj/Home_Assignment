@@ -1,6 +1,7 @@
 """In-memory caches as port decorators: registry data until new data is published, and plans.
 
-CachingTrialSource keeps searches, name lookups and posted results until new data is published.
+CachingTrialSource keeps searches, category counts, name lookups and posted results until new
+data is published.
 
 ClinicalTrials.gov publishes data in one batch per US business day (measured: ~800–1,200
 updated studies per posting day, none on weekends and holidays), and `/version` reports
@@ -20,16 +21,18 @@ from typing import Any
 
 from cheiron.application.planning import PlanDraft, Question
 from cheiron.application.ports import QueryPlanner, Registry, TrialCandidate, TrialSearchResult, TrialSourceError
+from cheiron.domain.analysis import Dimension
 from cheiron.domain.results import PostedResults
 from cheiron.domain.trial_filter import TrialFilter
 
 SITE_WEIGHT = 3  # site lists roughly triple a result's memory (measured)
 RESULTS_WEIGHT = 500  # one trial's posted results (~220 KB of JSON) weigh about as much as 500 trials
 NAME_LOOKUP_WEIGHT = 1
+COUNTS_WEIGHT = 1
 
 
 class CachingTrialSource:
-    """Caches searches, name lookups and posted results; capacity is counted in trial-equivalents."""
+    """Caches searches, category counts, name lookups and posted results; capacity is counted in trial-equivalents."""
 
     def __init__(
         self,
@@ -55,6 +58,13 @@ class CachingTrialSource:
             ("search", criteria, max_trials, include_sites),
             lambda: self._inner.search(criteria, max_trials, include_sites=include_sites),
             lambda result: len(result.trials) * (SITE_WEIGHT if include_sites else 1),
+        )
+
+    async def count_by(self, criteria: TrialFilter, dimension: Dimension, keys: Sequence[str]) -> dict[str, int] | None:
+        return await self._cached(
+            ("count_by", criteria, dimension, tuple(keys)),
+            lambda: self._inner.count_by(criteria, dimension, keys),
+            lambda _: COUNTS_WEIGHT,
         )
 
     async def find_trials(self, name: str) -> tuple[TrialCandidate, ...]:

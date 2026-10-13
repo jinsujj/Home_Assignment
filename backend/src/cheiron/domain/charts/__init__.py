@@ -17,11 +17,16 @@ def build_visualization(
     plan: AnalysisPlan,
     trials_by_cohort: Mapping[str, Sequence[Trial]],
     max_citations: int = DEFAULT_MAX_CITATIONS,
+    totals: Mapping[str, Mapping[str | int, int]] | None = None,
 ) -> Visualization:
-    """`trials_by_cohort` maps each cohort label of the plan to its trials."""
+    """`trials_by_cohort` maps each cohort label of the plan to its trials.
+
+    `totals` gives CountBy registry counts per category for cohorts whose trials are a
+    truncated subset, by cohort label; their bars show these counts.
+    """
     match plan:
         case CountBy():
-            return build_count_by(plan, trials_by_cohort, max_citations)
+            return build_count_by(plan, trials_by_cohort, max_citations, totals or {})
         case CoOccurrence():
             return build_co_occurrence(plan, trials_by_cohort[plan.cohort.label], max_citations)
         case Distribution():

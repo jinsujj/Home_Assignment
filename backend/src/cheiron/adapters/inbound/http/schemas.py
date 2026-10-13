@@ -277,6 +277,9 @@ class CohortMeta(BaseModel):
     matched: int = Field(description="Trials matching the cohort's filter at ClinicalTrials.gov.")
     analyzed: int = Field(description="Trials fetched and aggregated; below `matched` when truncated.")
     truncated: bool
+    exact_counts: bool = Field(
+        description="Counts cover all `matched` trials (counted per category by the registry); citations cover `analyzed`."
+    )
 
 
 class TrialOption(BaseModel):
@@ -334,7 +337,16 @@ class VisualizationResponse(BaseModel):
                 query=query,
                 interpretation=interpretation,
                 plan=plan,
-                cohorts=[CohortMeta(label=c.label, matched=c.matched, analyzed=c.analyzed, truncated=c.truncated) for c in result.cohorts],
+                cohorts=[
+                    CohortMeta(
+                        label=c.label,
+                        matched=c.matched,
+                        analyzed=c.analyzed,
+                        truncated=c.truncated,
+                        exact_counts=c.exact_counts,
+                    )
+                    for c in result.cohorts
+                ],
                 trial=_trial_meta(result),
                 notes=[*planning_notes, *viz.notes, *result.notes],
             ),

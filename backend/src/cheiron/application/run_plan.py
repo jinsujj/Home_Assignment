@@ -1,18 +1,22 @@
 """Use case: execute an AnalysisPlan against the registry."""
 
 import asyncio
+from collections.abc import Sequence
 from dataclasses import dataclass
 
-from cheiron.application.ports import Registry, TrialCandidate
+from cheiron.application.ports import Registry, TrialCandidate, TrialSearchResult, TrialSourceError
 from cheiron.application.trial_lookup import NoPostedResults, choose_trial
-from cheiron.domain.analysis import AnalysisPlan, TrialResults, needs_sites
+from cheiron.domain.analysis import AnalysisPlan, CountBy, TrialResults, needs_sites
 from cheiron.domain.charts import DEFAULT_MAX_CITATIONS, build_visualization
 from cheiron.domain.charts.trial_results import build_trial_results
 from cheiron.domain.charts.views import alternative_views
+from cheiron.domain.facets import dimension_facets
 from cheiron.domain.trial_filter import TrialFilter
 from cheiron.domain.visualization import Visualization
 
 DEFAULT_MAX_TRIALS = 5000
+MAX_COUNT_REQUESTS = 20
+"""Registry counts cost one request per category, and the API serves about one per second."""
 
 
 @dataclass(frozen=True)
@@ -23,6 +27,8 @@ class CohortReport:
     """Trials matching the filter at the source."""
     analyzed: int
     """Trials actually fetched and aggregated (at most the per-cohort cap)."""
+    exact_counts: bool = False
+    """The chart's counts cover all `matched` trials (registry counts per category)."""
 
     @property
     def truncated(self) -> bool:
@@ -63,14 +69,19 @@ async def run_plan(
     results = await asyncio.gather(
         *(source.search(c.filter, max_trials_per_cohort, include_sites=include_sites) for c in cohorts)
     )
+    totals = await _registry_counts(plan, results, source)
     visualization = build_visualization(
-        plan, {c.label: r.trials for c, r in zip(cohorts, results, strict=True)}, max_citations
+        plan, {c.label: r.trials for c, r in zip(cohorts, results, strict=True)}, max_citations, totals
     )
     reports = tuple(
-        CohortReport(c.label, c.filter, r.total_count, len(r.trials)) for c, r in zip(cohorts, results, strict=True)
+        CohortReport(c.label, c.filter, r.total_count, len(r.trials), exact_counts=c.label in totals)
+        for c, r in zip(cohorts, results, strict=True)
     )
     notes = tuple(
-        f"Analyzed the first {r.analyzed:,} of {r.matched:,} matching trials"
+        f"Counts cover all {r.matched:,} matching trials{f' for {r.label}' if r.label else ''}, counted per "
+        f"category by ClinicalTrials.gov; citations and other notes cover the first {r.analyzed:,} analyzed."
+        if r.exact_counts
+        else f"Analyzed the first {r.analyzed:,} of {r.matched:,} matching trials"
         f"{f' for {r.label}' if r.label else ''}; figures cover the analyzed trials only."
         for r in reports
         if r.truncated
@@ -81,6 +92,35 @@ async def run_plan(
             "so multinational trials are included.",
         )
     return PlanResult(visualization, reports, notes, alternatives=alternative_views(visualization))
+
+
+async def _registry_counts(
+    plan: AnalysisPlan, results: Sequence[TrialSearchResult], source: Registry
+) -> dict[str, dict[str, int]]:
+    """Exact category counts for truncated cohorts, by cohort label, where the registry can count them.
+
+    Categories are those of the analyzed trials. Without a split, the counts are one number per
+    bar; beyond MAX_COUNT_REQUESTS, or when counting fails, the analyzed trials are charted.
+    """
+    if not isinstance(plan, CountBy) or plan.split_by:
+        return {}
+    wanted = {
+        cohort: sorted({f.key for t in result.trials for f in dimension_facets(t, plan.dimension)}, key=str)
+        for cohort, result in zip(plan.cohorts, results, strict=True)
+        if result.truncated
+    }
+    if not wanted or sum(len(keys) for keys in wanted.values()) > MAX_COUNT_REQUESTS:
+        return {}
+    totals = {}
+    try:
+        for cohort, keys in wanted.items():
+            counts = await source.count_by(cohort.filter, plan.dimension, keys)
+            if counts is None:
+                return {}
+            totals[cohort.label] = counts
+    except TrialSourceError:
+        return {}
+    return totals
 
 
 async def _run_trial_results(plan: TrialResults, source: Registry) -> PlanResult:

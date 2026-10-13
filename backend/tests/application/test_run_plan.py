@@ -1,11 +1,11 @@
 import pytest
 
-from cheiron.application.ports import TrialCandidate, TrialSearchResult
-from cheiron.application.run_plan import CohortReport, run_plan
+from cheiron.application.ports import TrialCandidate, TrialSearchResult, TrialSourceError
+from cheiron.application.run_plan import MAX_COUNT_REQUESTS, CohortReport, run_plan
 from cheiron.application.trial_lookup import NoPostedResults
 from cheiron.domain.analysis import Cohort, CoOccurrence, CountBy, Dimension, Distribution, Entity, Measure, TrialResults
 from cheiron.domain.results import PostedResults
-from cheiron.domain.trial import Phase
+from cheiron.domain.trial import Phase, Status
 from cheiron.domain.trial_filter import TrialFilter
 from cheiron.domain.visualization import ChartType
 from tests.domain.factories import trial
@@ -17,10 +17,19 @@ B = Cohort("B", TrialFilter(intervention="b"))
 
 
 class FakeSource:
-    def __init__(self, results: dict[TrialFilter, TrialSearchResult]) -> None:
+    def __init__(self, results: dict[TrialFilter, TrialSearchResult], counts=None, count_error=None) -> None:
         self.results = results
+        self.counts: dict[TrialFilter, dict[str, int]] = counts or {}
+        self.count_error = count_error
         self.calls: list[tuple[TrialFilter, int]] = []
+        self.count_calls: list[tuple[TrialFilter, Dimension, tuple[str, ...]]] = []
         self.include_sites: list[bool] = []
+
+    async def count_by(self, criteria: TrialFilter, dimension: Dimension, keys) -> dict[str, int] | None:
+        self.count_calls.append((criteria, dimension, tuple(keys)))
+        if self.count_error:
+            raise self.count_error
+        return self.counts.get(criteria)
 
     async def search(self, criteria: TrialFilter, max_trials: int, *, include_sites: bool = False) -> TrialSearchResult:
         self.calls.append((criteria, max_trials))
@@ -106,3 +115,51 @@ async def test_trial_results_by_nct_id_skip_the_name_lookup() -> None:
     with pytest.raises(NoPostedResults):
         await run_plan(TrialResults("nct05908799"), registry)
     assert registry.requested == ["NCT05908799"]
+
+
+# --- Registry counts for truncated cohorts ------------------------------------------------
+
+
+def _phases(*phases: Phase) -> tuple:
+    return tuple(trial(f"NCT{i}", phases=(p,)) for i, p in enumerate(phases))
+
+
+async def test_truncated_cohorts_are_counted_by_the_registry() -> None:
+    source = FakeSource(
+        {
+            A.filter: TrialSearchResult(_phases(Phase.PHASE1, Phase.PHASE2), total_count=40),
+            B.filter: TrialSearchResult(_phases(Phase.PHASE2), total_count=1),
+        },
+        counts={A.filter: {"PHASE1": 12, "PHASE2": 30}},
+    )
+
+    result = await run_plan(CountBy((A, B), Dimension.PHASE), source, max_trials_per_cohort=2)
+
+    assert source.count_calls == [(A.filter, Dimension.PHASE, ("PHASE1", "PHASE2"))]  # B is complete
+    rows = [(r["phase"], r["cohort"], r["trial_count"], r["citations"].total) for r in result.visualization.data]
+    assert rows == [("Phase 1", "A", 12, 1), ("Phase 1", "B", 0, 0), ("Phase 2", "A", 30, 1), ("Phase 2", "B", 1, 1)]
+    assert result.cohorts[0] == CohortReport("A", A.filter, 40, 2, exact_counts=True)
+    assert result.notes == (
+        "Counts cover all 40 matching trials for A, counted per category by ClinicalTrials.gov; "
+        "citations and other notes cover the first 2 analyzed.",
+    )
+
+
+async def test_analyzed_trials_are_charted_when_counting_is_unavailable() -> None:
+    truncated = TrialSearchResult(_phases(Phase.PHASE1, Phase.PHASE2), total_count=40)
+    many = TrialSearchResult(tuple(trial(f"NCT{i}", status=s) for i, s in enumerate(Status)), total_count=99)
+    cases = [
+        (FakeSource({A.filter: truncated}), CountBy((A,), Dimension.PHASE)),  # source cannot count
+        (FakeSource({A.filter: truncated}, count_error=TrialSourceError("429")), CountBy((A,), Dimension.PHASE)),
+        (FakeSource({A.filter: truncated}), CountBy((A,), Dimension.PHASE, split_by=Dimension.STATUS)),
+    ]
+    for source, plan in cases:
+        result = await run_plan(plan, source, max_trials_per_cohort=2)
+        assert not result.cohorts[0].exact_counts
+        assert result.notes == ("Analyzed the first 2 of 40 matching trials for A; figures cover the analyzed trials only.",)
+
+    # Two truncated cohorts with every status are more requests than an answer may spend.
+    assert len(Status) * 2 > MAX_COUNT_REQUESTS
+    source = FakeSource({A.filter: many, B.filter: many})
+    await run_plan(CountBy((A, B), Dimension.STATUS), source)
+    assert source.count_calls == []

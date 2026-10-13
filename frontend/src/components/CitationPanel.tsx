@@ -12,7 +12,8 @@ export function CitationPanel({ selection }: { selection: Selection | null }) {
       </h3>
       {citations.items.length < citations.total && (
         <p className="muted">
-          Showing {citations.items.length} of {citations.total.toLocaleString()} cited trials.
+          Showing {citations.items.length} of {citations.total.toLocaleString()} cited trials
+          {citations.total < count && ' (the analyzed ones; the count covers every matching trial)'}.
         </p>
       )}
       <ul className="citations">

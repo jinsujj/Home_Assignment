@@ -37,6 +37,9 @@ class FakeSource:
         trials = (trial("NCT1", phases=(Phase.PHASE2,)),) if self.total else ()
         return TrialSearchResult(trials, self.total)
 
+    async def count_by(self, criteria, dimension, keys):
+        return None
+
 
 async def test_a_grounded_first_draft_is_used_as_is() -> None:
     planner = ScriptedPlanner(GOOD)

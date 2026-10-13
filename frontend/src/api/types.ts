@@ -86,6 +86,8 @@ export interface CohortMeta {
   matched: number
   analyzed: number
   truncated: boolean
+  /** Counts cover all matched trials (counted per category by the registry); citations cover the analyzed. */
+  exact_counts: boolean
 }
 
 export interface TrialOption {

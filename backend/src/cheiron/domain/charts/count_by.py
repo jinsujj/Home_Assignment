@@ -16,9 +16,15 @@ type Key = str | int
 
 
 def build_count_by(
-    plan: CountBy, trials_by_cohort: Mapping[str, Sequence[Trial]], max_citations: int
+    plan: CountBy,
+    trials_by_cohort: Mapping[str, Sequence[Trial]],
+    max_citations: int,
+    totals: Mapping[str, Mapping[Key, int]] | None = None,
 ) -> Visualization:
+    """`totals`: registry counts per category for truncated cohorts (without a split); bars
+    show them, while citations still come from the cohort's analyzed trials."""
     dim, split = plan.dimension, plan.split_by
+    totals = {} if split else totals or {}
     compare = len(plan.cohorts) > 1
     cells: defaultdict[tuple[Key, Key | None], Bucket] = defaultdict(Bucket)
     categories: defaultdict[Key, Bucket] = defaultdict(Bucket)
@@ -48,7 +54,17 @@ def build_count_by(
             where = f" in {cohort.label}" if compare else ""
             notes.append(f"{skipped} of {len(trials)} trials{where} have no registered {missing} and are not shown.")
 
-    category_keys, dropped = _order(dim, categories, plan.top_n)
+    def count(category: Key, key: Key | None) -> int:
+        """The registry's count for a truncated cohort, else the analyzed trials'."""
+        cohort = key if compare else plan.cohorts[0].label
+        if category in totals.get(cohort, {}):
+            return totals[cohort][category]
+        bucket = cells.get((category, key))
+        return bucket.count if bucket else 0
+
+    cohort_keys = [c.label for c in plan.cohorts] if compare else [None]
+    ranking = {k: sum(count(k, c) for c in cohort_keys) for k in categories} if totals else None
+    category_keys, dropped = _order(dim, categories, plan.top_n, ranking)
     if dropped:
         notes.append(
             f"Showing the {len(category_keys)} most frequent of {len(categories)} {DIMENSION_TITLES[dim].lower()} values."
@@ -60,7 +76,7 @@ def build_count_by(
                 f"Showing the {len(series_keys)} most frequent of {len(series)} {DIMENSION_TITLES[split].lower()} values."
             )
     else:
-        series_keys = [c.label for c in plan.cohorts] if compare else [None]
+        series_keys = cohort_keys
 
     temporal = dim is Dimension.START_YEAR
     x_field = dim.value
@@ -79,7 +95,7 @@ def build_count_by(
             row: dict = {x_field: category if temporal else category_label(category)}
             if series_field:
                 row[series_field] = series_label(key)
-            row["trial_count"] = bucket.count if bucket else 0
+            row["trial_count"] = count(category, key)
             row["citations"] = bucket.citations(max_citations) if bucket else Citations(0, ())
             rows.append(row)
 
@@ -116,14 +132,17 @@ def build_count_by(
     return Visualization(chart, what + cohort_suffix(plan.cohorts), encoding, rows, tuple(notes))
 
 
-def _order(dim: Dimension, buckets: Mapping[Key, Bucket], top_n: int | None) -> tuple[list[Key], int]:
-    """Keys in display order, and how many were dropped by the top-N limit."""
+def _order(
+    dim: Dimension, buckets: Mapping[Key, Bucket], top_n: int | None, counts: Mapping[Key, int] | None = None
+) -> tuple[list[Key], int]:
+    """Keys in display order, and how many were dropped by the top-N limit; `counts` overrides
+    the buckets' counts for ranking."""
     if not buckets:
         return [], 0
     if dim is Dimension.START_YEAR:
         years = [int(k) for k in buckets]
         return list(range(min(years), max(years) + 1)), 0
-    ranked = sorted(buckets, key=lambda k: (-buckets[k].count, buckets[k].label))
+    ranked = sorted(buckets, key=lambda k: (-(counts[k] if counts else buckets[k].count), buckets[k].label))
     limit = top_n or (DEFAULT_TOP_N if dim in HIGH_CARDINALITY else None)
     kept = ranked[:limit] if limit else ranked
     if dim is Dimension.PHASE:
