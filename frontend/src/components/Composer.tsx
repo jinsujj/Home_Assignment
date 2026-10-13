@@ -89,7 +89,14 @@ export function Composer({ query, onQueryChange, fields, onFieldsChange, options
             Filters{active.length > 0 && ` · ${active.length}`}
           </button>
           <button className="primary" type="submit" disabled={loading || !query.trim()}>
-            {loading ? 'Working…' : 'Ask'}
+            {loading ? (
+              <>
+                <span className="spinner" aria-hidden="true" />
+                Working…
+              </>
+            ) : (
+              'Ask'
+            )}
           </button>
         </div>
       </div>

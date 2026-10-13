@@ -218,12 +218,23 @@ export default function App() {
       <main>
         <div className="results">
           {error && <pre className={error.explained ? 'notice' : 'error'}>{error.message}</pre>}
-          {!result && loading && <p className="muted">Planning and querying ClinicalTrials.gov…</p>}
+          {!result && loading && (
+            <p className="muted">
+              <span className="spinner" aria-hidden="true" />
+              Planning and querying ClinicalTrials.gov…
+            </p>
+          )}
           {result && viz && (
             <>
               <header className={loading ? 'stale' : ''}>
                 <span className="type">{viz.type}</span>
-                {loading && <span className="muted"> Working…</span>}
+                {loading && (
+                  <span className="muted">
+                    {' '}
+                    <span className="spinner" aria-hidden="true" />
+                    Working…
+                  </span>
+                )}
                 <h2>{viz.title}</h2>
                 {result.meta.interpretation && (
                   <p className="interpretation">
