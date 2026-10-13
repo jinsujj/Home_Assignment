@@ -327,3 +327,14 @@ async def test_tallies_are_cached() -> None:
     await cache.tally(PEMBRO, Dimension.START_YEAR, 25_000)
 
     assert inner.calls == [("tally", Dimension.START_YEAR)]
+
+
+async def test_a_follow_up_is_planned_apart_from_the_same_words_asked_alone() -> None:
+    inner = CountingPlanner()
+    planner = CachingPlanner(inner)
+
+    await planner.draft(Question("Only recruiting ones"))
+    await planner.draft(Question("Only recruiting ones", earlier=("Breast cancer trials by phase",), previous_plan="{}"))
+    await planner.draft(Question("Only recruiting ones", earlier=("Lung cancer trials by phase",), previous_plan="{}"))
+
+    assert len(inner.calls) == 3

@@ -57,6 +57,14 @@ Filters, per cohort. Include only what the question states:
 - Structured fields listed with the question are applied to every cohort automatically. Do not
   repeat them as filters, but use them to resolve references such as "this drug" and for labels.
 
+Follow-ups: the input may list earlier questions and the plan that answered the last one. A
+question that names only what to change refines that plan: narrowing ("only recruiting ones",
+"in the United States", "since 2020"), regrouping ("by country instead") or comparing ("compare
+with nivolumab"). Return the whole plan with the change applied, keeping every filter and setting
+it does not change; the quotes of kept filters are words of the earlier questions. A question that
+names its own subject (another drug, condition or sponsor without "compare") asks something new:
+plan it on its own and keep nothing from before.
+
 Labels: short legend names, e.g. "Pembrolizumab" and "Nivolumab" for a comparison.
 Use top_n when the question asks for a top N or "the most" of a many-valued dimension
 (countries, conditions, sponsors, interventions); 10 is a good default for "the most".
@@ -107,7 +115,15 @@ class OpenAIPlanner:
 
 def render_input(question: Question, feedback: Sequence[str] = ()) -> str:
     fields = question.fields.described()
-    lines = [
+    lines = []
+    if question.earlier:
+        lines += [
+            "Earlier questions in this conversation, oldest first:",
+            *(f"- {q}" for q in question.earlier),
+            f"Plan that answered the last one: {question.previous_plan or 'none'}",
+            "",
+        ]
+    lines += [
         f"Question: {question.text}",
         f"Structured fields (applied automatically): {json.dumps(fields) if fields else 'none'}",
     ]

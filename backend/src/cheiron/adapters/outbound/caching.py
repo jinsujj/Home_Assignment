@@ -162,7 +162,8 @@ class CachingPlanner:
 
     Measured: a repeated question spent ~90% of its 2.3 s in the planner while the data came
     from cache in 0.2 s. The key is everything the planner sees: the question (ignoring case,
-    spacing and a trailing "?"), the structured fields, the correction feedback, and today's
+    spacing and a trailing "?"), the structured fields, a follow-up's earlier questions and plan,
+    the correction feedback, and today's
     date, which resolves "in the last 5 years". A correction round is cached too, under its
     own feedback, so a question that needed one is also instant the next time.
     """
@@ -175,7 +176,7 @@ class CachingPlanner:
 
     async def draft(self, question: Question, feedback: Sequence[str] = ()) -> PlanDraft:
         text = " ".join(question.text.casefold().split()).rstrip(" ?")
-        key = (text, question.fields, tuple(feedback), self._today())
+        key = (text, question.fields, question.earlier, question.previous_plan, tuple(feedback), self._today())
         if key in self._drafts:
             self._drafts.move_to_end(key)
             return self._drafts[key]

@@ -88,3 +88,18 @@ async def test_api_failures_become_planner_errors() -> None:
 
     with pytest.raises(PlannerError, match="unavailable"):
         await planner.draft(QUESTION)
+
+
+def test_a_follow_up_lists_the_earlier_questions_and_plan_first() -> None:
+    question = Question(
+        "Only recruiting ones", earlier=("How are breast cancer trials distributed across phases?",), previous_plan='{"kind":"count_by"}'
+    )
+
+    assert render_input(question) == (
+        "Earlier questions in this conversation, oldest first:\n"
+        "- How are breast cancer trials distributed across phases?\n"
+        'Plan that answered the last one: {"kind":"count_by"}\n'
+        "\n"
+        "Question: Only recruiting ones\n"
+        "Structured fields (applied automatically): none"
+    )

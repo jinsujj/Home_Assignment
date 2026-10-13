@@ -219,6 +219,15 @@ class PlanRequest(_Schema):
     )
 
 
+class Conversation(_Schema):
+    """What a follow-up question refines: the questions before it and the plan that answered the last."""
+
+    questions: list[Annotated[str, Field(min_length=1, max_length=1000)]] = Field(
+        min_length=1, max_length=5, description="Earlier questions, oldest first (at most the last 5)."
+    )
+    plan: PlanIn = Field(description="The plan that answered the last of them: its response's `meta.plan`.")
+
+
 class VisualizeRequest(_Schema):
     """A question plus optional structured fields, which apply to every cohort and take precedence."""
 
@@ -233,6 +242,11 @@ class VisualizeRequest(_Schema):
     end_year: int | None = Field(None, ge=1900, le=2100, description="Trials starting in or before this year.")
     nct_id: str | None = Field(
         None, pattern=r"^NCT\d{8}$", description="For a single trial's results: use this trial, e.g. to pick an alternative."
+    )
+    context: Conversation | None = Field(
+        None,
+        description="For a follow-up such as 'only recruiting ones': the conversation it refines. The planner "
+        "edits the previous plan, and filters kept from earlier questions are reported in meta.notes.",
     )
     max_trials_per_cohort: int = Field(DEFAULT_MAX_TRIALS, ge=1, le=MAX_TRIALS_LIMIT)
     all_citation_ids: bool = Field(
@@ -259,6 +273,8 @@ class VisualizeRequest(_Schema):
                 end_year=self.end_year,
                 nct_id=self.nct_id,
             ),
+            earlier=tuple(self.context.questions) if self.context else (),
+            previous_plan=self.context.plan.model_dump_json(exclude_none=True) if self.context else None,
         )
 
 

@@ -9,7 +9,7 @@ from cheiron.domain.results import GroupValue, Outcome, OutcomeType, PostedResul
 from cheiron.domain.trial import InterventionType, Phase
 from cheiron.domain.trial_filter import TrialFilter
 from cheiron.domain.visualization import RegistryCount
-from tests.application.planning_factories import cohort, draft
+from tests.application.planning_factories import cohort, draft, text
 from tests.application.test_options import FakeVocabulary
 from tests.domain.factories import drug, trial
 
@@ -516,3 +516,24 @@ async def test_arm_links_are_only_for_drug_networks() -> None:
 
     assert response.status_code == 422
     assert "drug-drug" in response.text
+
+
+async def test_a_follow_up_sends_the_conversation_to_the_planner_and_reports_kept_filters() -> None:
+    recruiting = draft(
+        interpretation="Recruiting breast cancer trials by phase.",
+        cohorts=[cohort(condition=text("breast cancer"), statuses={"values": ["RECRUITING"], "quote": "recruiting"})],
+    )
+    planner = ScriptedPlanner(recruiting)
+    previous = {"kind": "count_by", "cohorts": [{"label": "", "filter": {"condition": "breast cancer"}}], "dimension": "phase"}
+
+    async with client_with_planner(FakeSource([trial("NCT1")]), planner) as client:
+        response = await client.post(
+            "/api/visualize",
+            json={"query": "Only recruiting ones", "context": {"questions": ["Breast cancer trials by phase?"], "plan": previous}},
+        )
+
+    assert response.status_code == 200
+    [question] = planner.questions
+    assert question.earlier == ("Breast cancer trials by phase?",)
+    assert '"condition":"breast cancer"' in question.previous_plan
+    assert "Kept the condition filter 'breast cancer' on the cohort from an earlier question." in response.json()["meta"]["notes"]

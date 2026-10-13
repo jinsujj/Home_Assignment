@@ -273,3 +273,27 @@ def test_an_unquoted_outcome_is_dropped_on_the_last_attempt() -> None:
     grounded = ground(proposal, Question("Results of KEYNOTE-189?"), drop_unquoted=True)
 
     assert grounded.plan.outcome is None
+
+
+FOLLOW_UP = Question(
+    "Only recruiting ones",
+    earlier=("How are breast cancer trials distributed across phases?",),
+    previous_plan='{"kind": "count_by"}',
+)
+
+
+def test_a_follow_up_keeps_filters_quoted_from_earlier_questions_and_says_so() -> None:
+    grounded = ground(
+        draft(cohorts=[cohort(condition=text("breast cancer"), statuses={"values": ["RECRUITING"], "quote": "recruiting"})]),
+        FOLLOW_UP,
+    )
+
+    assert grounded.plan.cohorts[0].filter == TrialFilter(condition="breast cancer", statuses=frozenset({Status.RECRUITING}))
+    assert grounded.notes == ("Kept the condition filter 'breast cancer' on the cohort from an earlier question.",)
+
+
+def test_a_quote_cannot_span_two_questions() -> None:
+    spanning = draft(cohorts=[cohort(condition=text("phases", "phases? only"))])
+
+    with pytest.raises(DraftRejected):
+        ground(spanning, FOLLOW_UP)

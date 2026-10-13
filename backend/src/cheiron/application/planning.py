@@ -4,6 +4,8 @@ A planner (an LLM) writes a PlanDraft: the plan, plus for every filter the words
 question that state it. `ground` checks the draft against the question before anything runs:
 
 - a filter whose quote is not in the question was invented, so it is dropped (and reported);
+  in a follow-up, the earlier questions of the conversation count too, and a filter kept from
+  them is reported;
 - a free-text value must be taken from its quote, so search terms are the user's own words;
 - kind-specific fields and the domain's invariants must hold, otherwise the draft is
   rejected with problems the planner can correct.
@@ -171,6 +173,10 @@ class StructuredFields:
 class Question:
     text: str
     fields: StructuredFields = StructuredFields()
+    earlier: tuple[str, ...] = ()
+    """For a follow-up: the questions before this one, oldest first."""
+    previous_plan: str | None = None
+    """For a follow-up: the plan that answered the last earlier question, as JSON."""
 
 
 # --- Grounding -------------------------------------------------------------------------------
@@ -221,11 +227,11 @@ def ground(draft: PlanDraft, question: Question, *, drop_unquoted: bool = False)
 
     problems: list[str] = []
     notes: list[str] = []
-    text = _fold(question.text)
+    quoted = _Quotes(question)
     structured = {f: getattr(question.fields, s) for f, s in _STRUCTURED.items()}
     given = {f for f, v in structured.items() if v not in (None, frozenset())}
     if draft.kind == "trial_results":
-        return _ground_trial_results(draft, question, text, given, drop_unquoted)
+        return _ground_trial_results(draft, question, quoted, given, drop_unquoted)
 
     cohorts = []
     for number, cohort in enumerate(draft.cohorts, start=1):
@@ -235,7 +241,7 @@ def ground(draft: PlanDraft, question: Question, *, drop_unquoted: bool = False)
             proposed = getattr(cohort.filter, name)
             if proposed is None or name in given:
                 continue
-            if _fold(proposed.quote) not in text:
+            if not quoted(proposed.quote):
                 if drop_unquoted:
                     notes.append(
                         f"Ignored a {name.replace('_', ' ')} filter on {where}: its justification "
@@ -251,6 +257,9 @@ def ground(draft: PlanDraft, question: Question, *, drop_unquoted: bool = False)
                 problems.append(f"{where}: {name} '{proposed.value}' must be words taken from its quote '{proposed.quote}'.")
                 continue
             values[name] = frozenset(proposed.values) if name in ("phases", "statuses") else proposed.value
+            if quoted.earlier_only(proposed.quote):
+                kept = proposed.value if name in _TEXT_FIELDS else proposed.quote
+                notes.append(f"Kept the {name.replace('_', ' ')} filter '{kept}' on {where} from an earlier question.")
         values |= {name: structured[name] for name in given}
         try:
             criteria = TrialFilter(**values)
@@ -281,7 +290,7 @@ def ground(draft: PlanDraft, question: Question, *, drop_unquoted: bool = False)
 
 
 def _ground_trial_results(
-    draft: PlanDraft, question: Question, text: str, given: set[str], drop_unquoted: bool
+    draft: PlanDraft, question: Question, quoted: "_Quotes", given: set[str], drop_unquoted: bool
 ) -> GroundedPlan:
     problems: list[str] = []
     notes: list[str] = []
@@ -290,7 +299,7 @@ def _ground_trial_results(
         notes.append(f"Using the requested trial {trial}.")
     elif draft.trial is None:
         problems.append("trial_results needs the trial the question names.")
-    elif _fold(draft.trial.quote) not in text or _fold(draft.trial.value) not in _fold(draft.trial.quote):
+    elif not quoted(draft.trial.quote) or _fold(draft.trial.value) not in _fold(draft.trial.quote):
         problems.append(
             f"The trial '{draft.trial.value}' must be named in the question: quote its exact words "
             f"(quote given: '{draft.trial.quote}')."
@@ -300,7 +309,7 @@ def _ground_trial_results(
 
     outcome = None
     if draft.outcome is not None:
-        if _fold(draft.outcome.quote) in text and _fold(draft.outcome.value) in _fold(draft.outcome.quote):
+        if quoted(draft.outcome.quote) and _fold(draft.outcome.value) in _fold(draft.outcome.quote):
             outcome = draft.outcome.value
         elif drop_unquoted:
             notes.append(f"Ignored the outcome '{draft.outcome.value}': it is not named in the question.")
@@ -346,6 +355,22 @@ def _build(draft: PlanDraft, cohorts: tuple[Cohort, ...], problems: list[str]) -
     except ValueError as error:
         problems.append(str(error))
         return None
+
+
+class _Quotes:
+    """Where a draft's quotes may come from: the question, or in a follow-up an earlier question.
+    Each is checked on its own, so a quote cannot span two questions."""
+
+    def __init__(self, question: Question) -> None:
+        self._current = _fold(question.text)
+        self._earlier = tuple(_fold(q) for q in question.earlier)
+
+    def __call__(self, quote: str) -> bool:
+        words = _fold(quote)
+        return words in self._current or any(words in q for q in self._earlier)
+
+    def earlier_only(self, quote: str) -> bool:
+        return _fold(quote) not in self._current
 
 
 def _default_label(criteria: TrialFilter, cohort_count: int) -> str:

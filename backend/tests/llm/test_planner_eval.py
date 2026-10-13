@@ -205,3 +205,46 @@ async def test_refuses_questions_no_analysis_can_answer(planner, question, reaso
         await plan_question(Question(question), planner)
 
     assert refused.value.reason is reason
+
+
+BREAST_CANCER_PHASES = Question(
+    "",
+    earlier=("How are breast cancer trials distributed across phases?",),
+    previous_plan='{"kind":"count_by","cohorts":[{"label":"Breast cancer","filter":{"condition":"breast cancer"}}],"dimension":"phase"}',
+)
+
+FOLLOW_UPS = [
+    ("Only recruiting ones", {"dimension": Dimension.PHASE}, [TrialFilter(condition="breast cancer", statuses=frozenset({Status.RECRUITING}))]),
+    ("By country instead", {"dimension": Dimension.COUNTRY}, [TrialFilter(condition="breast cancer")]),
+    ("Compare with lung cancer", {"dimension": Dimension.PHASE}, [TrialFilter(condition="breast cancer"), TrialFilter(condition="lung cancer")]),
+    (
+        "Only recruiting trials in the United States",
+        {"dimension": Dimension.PHASE},
+        [TrialFilter(condition="breast cancer", country="united states", statuses=frozenset({Status.RECRUITING}))],
+    ),
+]
+
+
+@pytest.mark.parametrize(("follow_up", "fields", "expected_filters"), FOLLOW_UPS, ids=[c[0] for c in FOLLOW_UPS])
+async def test_a_follow_up_edits_the_previous_plan(planner, follow_up, fields, expected_filters) -> None:
+    question = Question(follow_up, earlier=BREAST_CANCER_PHASES.earlier, previous_plan=BREAST_CANCER_PHASES.previous_plan)
+
+    plan = (await plan_question(question, planner)).plan
+
+    assert isinstance(plan, CountBy)
+    for name, value in fields.items():
+        assert getattr(plan, name) == value, name
+    assert sorted(map(folded, filters(plan)), key=repr) == sorted(expected_filters, key=repr)
+
+
+async def test_a_new_topic_keeps_nothing_from_the_conversation(planner) -> None:
+    question = Question(
+        "Which countries have the most recruiting trials for asthma?",
+        earlier=BREAST_CANCER_PHASES.earlier,
+        previous_plan=BREAST_CANCER_PHASES.previous_plan,
+    )
+
+    plan = (await plan_question(question, planner)).plan
+
+    assert isinstance(plan, CountBy) and plan.dimension is Dimension.COUNTRY
+    assert list(map(folded, filters(plan))) == [TrialFilter(condition="asthma", statuses=frozenset({Status.RECRUITING}))]
