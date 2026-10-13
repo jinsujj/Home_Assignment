@@ -2,3 +2,12 @@
 .env
 .env.*
 !.env.example
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Assignment brief (not part of the submission code)
+/*.pdf

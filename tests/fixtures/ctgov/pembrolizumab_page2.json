@@ -1,0 +1,259 @@
+{
+  "studies": [
+    {
+      "protocolSection": {
+        "identificationModule": {
+          "nctId": "NCT04344795",
+          "briefTitle": "Phase 1a/1b Study of TPST-1495 as a Single Agent and in Combination With Pembrolizumab in Subjects With Solid Tumors"
+        },
+        "statusModule": {
+          "overallStatus": "COMPLETED",
+          "startDateStruct": {
+            "date": "2020-05-06"
+          },
+          "completionDateStruct": {
+            "date": "2024-09-25"
+          }
+        },
+        "sponsorCollaboratorsModule": {
+          "leadSponsor": {
+            "name": "Tempest Therapeutics",
+            "class": "INDUSTRY"
+          }
+        },
+        "conditionsModule": {
+          "conditions": [
+            "Solid Tumor",
+            "Colorectal Cancer",
+            "Non Small Cell Lung Cancer",
+            "Squamous Cell Carcinoma of Head and Neck",
+            "Urothelial Carcinoma",
+            "Endometrial Cancer",
+            "Gastroesophageal Junction Adenocarcinoma",
+            "Gastric Adenocarcinoma",
+            "Solid Tumors With PIK3Ca Mutation"
+          ]
+        },
+        "designModule": {
+          "studyType": "INTERVENTIONAL",
+          "phases": [
+            "PHASE1"
+          ],
+          "enrollmentInfo": {
+            "count": 89
+          }
+        },
+        "armsInterventionsModule": {
+          "interventions": [
+            {
+              "type": "DRUG",
+              "name": "TPST-1495 twice daily"
+            },
+            {
+              "type": "DRUG",
+              "name": "TPST-1495 once daily or on intermittent schedule"
+            },
+            {
+              "type": "DRUG",
+              "name": "Pembrolizumab",
+              "otherNames": [
+                "Keytruda"
+              ]
+            }
+          ]
+        },
+        "contactsLocationsModule": {
+          "locations": [
+            {
+              "country": "United States"
+            },
+            {
+              "country": "United States"
+            },
+            {
+              "country": "United States"
+            },
+            {
+              "country": "United States"
+            },
+            {
+              "country": "United States"
+            },
+            {
+              "country": "United States"
+            },
+            {
+              "country": "United States"
+            },
+            {
+              "country": "United States"
+            },
+            {
+              "country": "United States"
+            },
+            {
+              "country": "United States"
+            },
+            {
+              "country": "United States"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "protocolSection": {
+        "identificationModule": {
+          "nctId": "NCT03044730",
+          "briefTitle": "Pembrolizumab and Capecitabine in Treating Patients With Locally Advanced or Metastatic Triple Negative or Hormone-Refractory Breast Cancer That Cannot Be Removed by Surgery"
+        },
+        "statusModule": {
+          "overallStatus": "UNKNOWN",
+          "startDateStruct": {
+            "date": "2017-05-25"
+          },
+          "completionDateStruct": {
+            "date": "2021-05"
+          }
+        },
+        "sponsorCollaboratorsModule": {
+          "leadSponsor": {
+            "name": "Northwestern University",
+            "class": "OTHER"
+          },
+          "collaborators": [
+            {
+              "name": "Merck Sharp & Dohme LLC",
+              "class": "INDUSTRY"
+            },
+            {
+              "name": "National Cancer Institute (NCI)",
+              "class": "NIH"
+            }
+          ]
+        },
+        "conditionsModule": {
+          "conditions": [
+            "Estrogen Receptor Negative",
+            "HER2/Neu Negative",
+            "Progesterone Receptor Negative",
+            "Recurrent Breast Carcinoma",
+            "Stage III Breast Cancer",
+            "Stage IIIA Breast Cancer",
+            "Stage IIIB Breast Cancer",
+            "Stage IIIC Breast Cancer",
+            "Stage IV Breast Cancer",
+            "Triple-Negative Breast Carcinoma"
+          ]
+        },
+        "designModule": {
+          "studyType": "INTERVENTIONAL",
+          "phases": [
+            "PHASE2"
+          ],
+          "enrollmentInfo": {
+            "count": 30
+          }
+        },
+        "armsInterventionsModule": {
+          "interventions": [
+            {
+              "type": "DRUG",
+              "name": "Capecitabine",
+              "otherNames": [
+                "Ro 09-1978/000",
+                "Xeloda"
+              ]
+            },
+            {
+              "type": "OTHER",
+              "name": "Laboratory Biomarker Analysis"
+            },
+            {
+              "type": "BIOLOGICAL",
+              "name": "Pembrolizumab",
+              "otherNames": [
+                "Keytruda",
+                "Lambrolizumab",
+                "MK-3475",
+                "SCH 900475"
+              ]
+            }
+          ]
+        },
+        "contactsLocationsModule": {
+          "locations": [
+            {
+              "country": "United States"
+            },
+            {
+              "country": "United States"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "protocolSection": {
+        "identificationModule": {
+          "nctId": "NCT05761132",
+          "briefTitle": "Neo-adjuvant Pembrolizumab in Vulvar Squamous Cell Carcinoma: a Clinical Proof-of-concept Study"
+        },
+        "statusModule": {
+          "overallStatus": "UNKNOWN",
+          "startDateStruct": {
+            "date": "2023-04-01"
+          },
+          "completionDateStruct": {
+            "date": "2025-02-01"
+          }
+        },
+        "sponsorCollaboratorsModule": {
+          "leadSponsor": {
+            "name": "Leiden University Medical Center",
+            "class": "OTHER"
+          },
+          "collaborators": [
+            {
+              "name": "University Medical Center Groningen",
+              "class": "OTHER"
+            },
+            {
+              "name": "Erasmus Medical Center",
+              "class": "OTHER"
+            }
+          ]
+        },
+        "conditionsModule": {
+          "conditions": [
+            "Vulva Cancer",
+            "Vulva Neoplasm",
+            "Squamous Cell Cancer"
+          ]
+        },
+        "designModule": {
+          "studyType": "INTERVENTIONAL",
+          "phases": [
+            "PHASE2"
+          ],
+          "enrollmentInfo": {
+            "count": 40
+          }
+        },
+        "armsInterventionsModule": {
+          "interventions": [
+            {
+              "type": "DRUG",
+              "name": "Pembrolizumab",
+              "otherNames": [
+                "checkpoint inhibitor"
+              ]
+            }
+          ]
+        },
+        "contactsLocationsModule": {}
+      }
+    }
+  ],
+  "nextPageToken": "ZVNj7o2Elu8o3lpzDMiio-numpOQJJxuZPWi3_g"
+}
