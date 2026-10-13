@@ -3,7 +3,9 @@ import pytest
 
 from cheiron.adapters.inbound.http.api import create_app
 from cheiron.application.options import SearchOptionsProvider
-from cheiron.application.ports import PlannerError, TrialSearchResult, TrialSourceError
+from cheiron.application.planning import REFUSAL_MESSAGES, Refusal
+from cheiron.application.ports import PlannerError, TrialCandidate, TrialSearchResult, TrialSourceError
+from cheiron.domain.results import GroupValue, Outcome, OutcomeType, PostedResults
 from cheiron.domain.trial import InterventionType, Phase
 from cheiron.domain.trial_filter import TrialFilter
 from tests.application.planning_factories import cohort, draft
@@ -184,18 +186,18 @@ async def test_visualize_answers_a_question_with_its_interpretation() -> None:
 
 
 async def test_visualize_refuses_unanswerable_questions() -> None:
-    planner = ScriptedPlanner(
-        draft(answerable=False, unsupported_reason="Asks for one trial's results.", kind=None, interpretation="Results of KEYNOTE-189.")
-    )
+    planner = ScriptedPlanner(draft(answerable=False, refusal="medical_advice", kind=None))
     source = FakeSource()
 
-    response = await client_with_planner(source, planner).post("/api/visualize", json={"query": "Results of KEYNOTE-189?"})
+    response = await client_with_planner(source, planner).post(
+        "/api/visualize", json={"query": "Should I take metformin for weight loss?"}
+    )
 
     assert response.status_code == 422
     assert response.json()["detail"] == {
         "code": "unsupported_question",
-        "message": "Asks for one trial's results.",
-        "interpretation": "Results of KEYNOTE-189.",
+        "reason": "medical_advice",
+        "message": REFUSAL_MESSAGES[Refusal.MEDICAL_ADVICE],
     }
     assert source.calls == []
 
@@ -246,3 +248,80 @@ async def test_options_list_choices_for_building_filters() -> None:
     assert body["countries"][1] == {"value": "South Korea", "label": "South Korea", "trials": 17784}
     assert body["phases"][2] == {"value": "PHASE2", "label": "Phase 2", "trials": None}
     assert set(body) == {"countries", "conditions", "interventions", "sponsors", "phases", "statuses"}
+
+
+# --- single-trial results -------------------------------------------------------------------
+
+
+class ResultsSource(FakeSource):
+    def __init__(self, results=None, candidates=()) -> None:
+        super().__init__()
+        self.results, self.candidates = results, candidates
+
+    async def find_trials(self, name):
+        return self.candidates
+
+    async def posted_results(self, nct_id):
+        return self.results
+
+
+MAIN = TrialCandidate("NCT02578680", "Main trial", None, True, 616, "title")
+EXTENSION = TrialCandidate("NCT03950674", "Japan extension", None, True, 40, "study_id")
+POSTED = PostedResults(
+    "NCT02578680",
+    "Main trial",
+    None,
+    (Outcome(OutcomeType.PRIMARY, "Overall Survival", None, "MEDIAN", "95% Confidence Interval", "Months", "21 months", (GroupValue("Control", "11.3", "8.7", "15.1"),)),),
+    (),
+)
+
+
+async def test_plans_endpoint_charts_a_trials_posted_results() -> None:
+    response = await client_for(ResultsSource(POSTED, (MAIN, EXTENSION))).post(
+        "/api/plans", json={"plan": {"kind": "trial_results", "trial": "KEYNOTE-189"}}
+    )
+
+    body = response.json()
+    assert response.status_code == 200
+    assert body["visualization"]["title"] == "Primary outcomes — KEYNOTE-189 (NCT02578680)"
+    assert body["visualization"]["encoding"]["y_lower"]["field"] == "lower"
+    assert body["meta"]["trial"] == {
+        "nct_id": "NCT02578680",
+        "title": "Main trial",
+        "url": "https://clinicaltrials.gov/study/NCT02578680",
+        "alternatives": [
+            {"nct_id": "NCT03950674", "title": "Japan extension", "url": "https://clinicaltrials.gov/study/NCT03950674", "enrollment": 40}
+        ],
+    }
+    assert body["meta"]["cohorts"] == []
+
+
+async def test_visualize_passes_a_chosen_nct_id_to_the_plan() -> None:
+    planner = ScriptedPlanner(draft(kind="trial_results", cohorts=[], dimension=None, trial={"value": "KEYNOTE-189", "quote": "KEYNOTE-189"}))
+
+    response = await client_with_planner(ResultsSource(POSTED), planner).post(
+        "/api/visualize", json={"query": "Results of KEYNOTE-189?", "nct_id": "NCT02578680"}
+    )
+
+    assert response.json()["meta"]["plan"] == {"kind": "trial_results", "trial": "NCT02578680", "focus": "outcomes", "outcome": None}
+
+
+@pytest.mark.parametrize(
+    ("source", "code", "message"),
+    [
+        (ResultsSource(None, ()), "trial_not_found", "No trial registered as 'KEYNOTE-999' was found"),
+        (ResultsSource(None, (TrialCandidate("NCT05908799", "Emulation", None, False, 1854, "title"),)), "no_posted_results", "NCT05908799 (Emulation) has not posted results"),
+    ],
+)
+async def test_trials_that_cannot_answer_explain_why(source, code: str, message: str) -> None:
+    response = await client_for(source).post("/api/plans", json={"plan": {"kind": "trial_results", "trial": "KEYNOTE-999"}})
+
+    assert response.status_code == 422
+    assert response.json()["detail"]["code"] == code
+    assert message in response.json()["detail"]["message"]
+
+
+async def test_nct_id_field_is_validated() -> None:
+    response = await client_with_planner(FakeSource(), ScriptedPlanner()).post("/api/visualize", json={"query": "x", "nct_id": "KEYNOTE-189"})
+
+    assert response.status_code == 422

@@ -404,6 +404,36 @@ pre {
   max-height: 480px;
 }
 
+.notice {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--muted);
+  border-radius: 6px;
+  background: var(--card);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 14px;
+  white-space: pre-wrap;
+}
+
+.trial {
+  margin: -4px 0 12px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: var(--card);
+  border: 1px solid var(--border);
+}
+
+.trial ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+  color: var(--muted);
+}
+
+.trial button.link {
+  margin: 0;
+}
+
 .error {
   padding: 12px;
   border: 1px solid #f3c1bc;

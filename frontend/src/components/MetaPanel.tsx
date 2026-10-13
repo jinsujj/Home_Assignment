@@ -3,27 +3,29 @@ import type { Meta } from '../api/types'
 export function MetaPanel({ meta }: { meta: Meta }) {
   return (
     <div className="meta">
-      <table>
-        <thead>
-          <tr>
-            <th>Cohort</th>
-            <th>Matched</th>
-            <th>Analyzed</th>
-          </tr>
-        </thead>
-        <tbody>
-          {meta.cohorts.map((c) => (
-            <tr key={c.label}>
-              <td>{c.label || '—'}</td>
-              <td>{c.matched.toLocaleString()}</td>
-              <td>
-                {c.analyzed.toLocaleString()}
-                {c.truncated && <span className="badge">truncated</span>}
-              </td>
+      {meta.cohorts.length > 0 && (
+        <table>
+          <thead>
+            <tr>
+              <th>Cohort</th>
+              <th>Matched</th>
+              <th>Analyzed</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {meta.cohorts.map((c) => (
+              <tr key={c.label}>
+                <td>{c.label || '—'}</td>
+                <td>{c.matched.toLocaleString()}</td>
+                <td>
+                  {c.analyzed.toLocaleString()}
+                  {c.truncated && <span className="badge">truncated</span>}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
       <ul className="notes">
         {meta.notes.map((note) => (
           <li key={note}>{note}</li>

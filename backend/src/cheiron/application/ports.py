@@ -3,9 +3,10 @@
 from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Protocol
+from typing import Literal, Protocol
 
 from cheiron.application.planning import PlanDraft, Question
+from cheiron.domain.results import PostedResults
 from cheiron.domain.trial import Trial
 from cheiron.domain.trial_filter import TrialFilter
 
@@ -63,3 +64,30 @@ class VocabularySource(Protocol):
     async def common_terms(self) -> dict[Vocabulary, tuple[TermCount, ...]]:
         """Registry-wide values by number of trials, most common first (a top list per vocabulary)."""
         ...
+
+
+@dataclass(frozen=True)
+class TrialCandidate:
+    """A trial found by name, and how the name matched it."""
+
+    nct_id: str
+    title: str
+    acronym: str | None
+    has_results: bool
+    enrollment: int | None
+    matched_by: Literal["acronym", "study_id", "title"] | None
+    """None when the registry's search matched loosely (e.g. one word of the name)."""
+
+
+class TrialResultsSource(Protocol):
+    async def find_trials(self, name: str) -> tuple[TrialCandidate, ...]:
+        """Trials whose acronym, study IDs or titles mention `name`."""
+        ...
+
+    async def posted_results(self, nct_id: str) -> PostedResults | None:
+        """The trial's posted results; None if it has none or does not exist."""
+        ...
+
+
+class Registry(TrialSource, TrialResultsSource, Protocol):
+    """Everything the use cases read from the registry."""

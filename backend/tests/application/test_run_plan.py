@@ -1,8 +1,10 @@
 import pytest
 
-from cheiron.application.ports import TrialSearchResult
+from cheiron.application.ports import TrialCandidate, TrialSearchResult
 from cheiron.application.run_plan import CohortReport, run_plan
-from cheiron.domain.analysis import Cohort, CoOccurrence, CountBy, Dimension, Distribution, Entity, Measure
+from cheiron.application.trial_lookup import NoPostedResults
+from cheiron.domain.analysis import Cohort, CoOccurrence, CountBy, Dimension, Distribution, Entity, Measure, TrialResults
+from cheiron.domain.results import PostedResults
 from cheiron.domain.trial import Phase
 from cheiron.domain.trial_filter import TrialFilter
 from cheiron.domain.visualization import ChartType
@@ -70,3 +72,37 @@ async def test_country_filters_are_explained() -> None:
     assert result.notes == (
         "A country filter keeps trials with at least one site in that country, so multinational trials are included.",
     )
+
+
+class ResultsRegistry:
+    def __init__(self, results, candidates=()) -> None:
+        self.results, self.candidates = results, candidates
+        self.requested: list[str] = []
+
+    async def find_trials(self, name):
+        return self.candidates
+
+    async def posted_results(self, nct_id):
+        self.requested.append(nct_id)
+        return self.results
+
+
+async def test_trial_results_by_name_report_the_trial_and_alternatives() -> None:
+    main = TrialCandidate("NCT02578680", "Main", None, True, 616, "title")
+    extension = TrialCandidate("NCT03950674", "Extension", None, True, 40, "study_id")
+    registry = ResultsRegistry(PostedResults("NCT02578680", "Main", None, (), ()), (main, extension))
+
+    result = await run_plan(TrialResults("KEYNOTE-189"), registry)
+
+    assert registry.requested == ["NCT02578680"]
+    assert result.trial.nct_id == "NCT02578680" and result.trial.alternatives == (extension,)
+    assert result.cohorts == ()
+    assert result.notes[0].startswith("'KEYNOTE-189' matches 2 trials")
+
+
+async def test_trial_results_by_nct_id_skip_the_name_lookup() -> None:
+    registry = ResultsRegistry(None)
+
+    with pytest.raises(NoPostedResults):
+        await run_plan(TrialResults("nct05908799"), registry)
+    assert registry.requested == ["NCT05908799"]

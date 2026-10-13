@@ -2,7 +2,7 @@
 
 from collections.abc import Mapping, Sequence
 
-from cheiron.domain.analysis import AnalysisPlan, CoOccurrence, Correlation, CountBy, Distribution
+from cheiron.domain.analysis import AnalysisPlan, CoOccurrence, Correlation, CountBy, Distribution, TrialResults
 from cheiron.domain.charts.co_occurrence import build_co_occurrence
 from cheiron.domain.charts.correlation import build_correlation
 from cheiron.domain.charts.count_by import build_count_by
@@ -28,3 +28,5 @@ def build_visualization(
             return build_distribution(plan, trials_by_cohort[plan.cohort.label], max_citations)
         case Correlation():
             return build_correlation(plan, trials_by_cohort[plan.cohort.label])
+        case TrialResults():
+            raise TypeError("TrialResults charts posted results, not trials: use charts.trial_results")

@@ -1,0 +1,822 @@
+{
+ "protocolSection": {
+  "identificationModule": {
+   "nctId": "NCT02578680",
+   "orgStudyIdInfo": {
+    "id": "3475-189"
+   },
+   "secondaryIdInfos": [
+    {
+     "id": "163421",
+     "type": "REGISTRY",
+     "domain": "JAPIC-CTI"
+    },
+    {
+     "id": "MK-3475-189",
+     "type": "OTHER",
+     "domain": "MSD"
+    },
+    {
+     "id": "2015-003694-15",
+     "type": "EUDRACT_NUMBER"
+    },
+    {
+     "id": "2015",
+     "type": "NIH",
+     "link": "https://reporter.nih.gov/quickSearch/2015"
+    }
+   ],
+   "organization": {
+    "fullName": "Merck Sharp & Dohme LLC",
+    "class": "INDUSTRY"
+   },
+   "briefTitle": "Study of Pemetrexed+Platinum Chemotherapy With or Without Pembrolizumab (MK-3475) in Participants With First Line Metastatic Nonsquamous Non-small Cell Lung Cancer (MK-3475-189/KEYNOTE-189)",
+   "officialTitle": "A Randomized, Double-Blind, Phase III Study of Platinum+Pemetrexed Chemotherapy With or Without Pembrolizumab (MK-3475) in First Line Metastatic Non-squamous Non-small Cell Lung Cancer Subjects (KEYNOTE-189)"
+  }
+ },
+ "resultsSection": {
+  "outcomeMeasuresModule": {
+   "outcomeMeasures": [
+    {
+     "type": "PRIMARY",
+     "title": "Progression-Free Survival (PFS) Per Response Evaluation Criteria in Solid Tumors (RECIST) 1.1 as Assessed by Blinded Central Imaging",
+     "description": "PFS was defined as the time from randomization to the first documented progressive disease (PD) or death due to any cause, whichever occurred first. Per RECIST 1.1, PD was defined as ≥20% increase in the sum of diameters of target lesions, taking as reference the smallest sum on study. In addition to the relative increase of 20%, the sum must also demonstrate an absolute increase of ≥5 mm. Note: The appearance of one or more new lesions was also considered PD. The PFS per RECIST 1.1 is presented.",
+     "populationDescription": "The analysis population consisted of all randomized participants.",
+     "reportingStatus": "POSTED",
+     "paramType": "MEDIAN",
+     "dispersionType": "95% Confidence Interval",
+     "unitOfMeasure": "Months",
+     "timeFrame": "Up to approximately 21 months",
+     "groups": [
+      {
+       "id": "OG000",
+       "title": "Pembrolizumab+Pemetrexed+Platinum Chemotherapy Followed by Pembrolizumab+Pemetrexed",
+       "description": "Participants received pembrolizumab 200 mg IV PLUS pemetrexed 500 mg/m\\^2 IV (with vitamin supplementation) PLUS cisplatin 75 mg/m\\^2 IV OR carboplatin AUC 5 IV on Day 1 of every 3-week cycle (Q3W) for 4 cycles followed by pembrolizumab 200 mg IV PLUS pemetrexed 500 mg/m\\^2 IV Q3W until progression. (Participants who received pembrolizumab 200 mg IV Q3W for up to 2 years but experienced disease progression, were eligible to receive a second course of pembrolizumab monotherapy 200 mg IV Q3W, at the investigator's discretion, for up to 1 additional year.)"
+      },
+      {
+       "id": "OG001",
+       "title": "Control",
+       "description": "Participants received saline placebo IV PLUS pemetrexed 500 mg/m\\^2 IV (with vitamin supplementation) PLUS cisplatin 75 mg/m\\^2 IV OR carboplatin AUC 5 IV on Day 1 of every 3-week cycle (Q3W) for 4 cycles followed by saline placebo IV PLUS pemetrexed 500 mg/m\\^2 IV Q3W until progression. (Effective 23-Dec-2019, participants discontinued saline placebo. If documented disease progression had occurred, and participants receiving Control met certain criteria, they were eligible to switch over to receive pembrolizumab monotherapy Q3W for the remainder of the study.)"
+      }
+     ],
+     "denoms": [
+      {
+       "units": "Participants",
+       "counts": [
+        {
+         "groupId": "OG000",
+         "value": "410"
+        },
+        {
+         "groupId": "OG001",
+         "value": "206"
+        }
+       ]
+      }
+     ],
+     "classes": [
+      {
+       "categories": [
+        {
+         "measurements": [
+          {
+           "groupId": "OG000",
+           "value": "8.8",
+           "lowerLimit": "7.6",
+           "upperLimit": "9.2"
+          },
+          {
+           "groupId": "OG001",
+           "value": "4.9",
+           "lowerLimit": "4.7",
+           "upperLimit": "5.5"
+          }
+         ]
+        }
+       ]
+      }
+     ],
+     "analyses": [
+      {
+       "groupIds": [
+        "OG000",
+        "OG001"
+       ],
+       "nonInferiorityType": "SUPERIORITY",
+       "pValue": "<0.00001",
+       "statisticalMethod": "Log Rank",
+       "paramType": "Hazard Ratio (HR)",
+       "paramValue": "0.52",
+       "ciPctValue": "95",
+       "ciNumSides": "TWO_SIDED",
+       "ciLowerLimit": "0.43",
+       "ciUpperLimit": "0.64",
+       "estimateComment": "Based on Cox regression model with treatment as a covariate stratified by PD-L1 status (≥1% vs. \\<1%), platinum chemotherapy (cisplatin vs. carboplatin) \\& smoking status (never vs. former/current). Pembrolizumab=numerator; Control=denominator."
+      }
+     ]
+    },
+    {
+     "type": "PRIMARY",
+     "title": "Overall Survival (OS)",
+     "description": "OS was defined as the time from randomization to death due to any cause. Participants without documented death at the time of the interim analysis were censored at the date of the last follow-up. The OS is presented.",
+     "populationDescription": "The analysis population consisted of all randomized participants.",
+     "reportingStatus": "POSTED",
+     "paramType": "MEDIAN",
+     "dispersionType": "95% Confidence Interval",
+     "unitOfMeasure": "Months",
+     "timeFrame": "Up to approximately 21 months",
+     "groups": [
+      {
+       "id": "OG000",
+       "title": "Pembrolizumab+Pemetrexed+Platinum Chemotherapy Followed by Pembrolizumab+Pemetrexed",
+       "description": "Participants received pembrolizumab 200 mg IV PLUS pemetrexed 500 mg/m\\^2 IV (with vitamin supplementation) PLUS cisplatin 75 mg/m\\^2 IV OR carboplatin AUC 5 IV on Day 1 of every 3-week cycle (Q3W) for 4 cycles followed by pembrolizumab 200 mg IV PLUS pemetrexed 500 mg/m\\^2 IV Q3W until progression. (Participants who received pembrolizumab 200 mg IV Q3W for up to 2 years but experienced disease progression, were eligible to receive a second course of pembrolizumab monotherapy 200 mg IV Q3W, at the investigator's discretion, for up to 1 additional year.)"
+      },
+      {
+       "id": "OG001",
+       "title": "Control",
+       "description": "Participants received saline placebo IV PLUS pemetrexed 500 mg/m\\^2 IV (with vitamin supplementation) PLUS cisplatin 75 mg/m\\^2 IV OR carboplatin AUC 5 IV on Day 1 of every 3-week cycle (Q3W) for 4 cycles followed by saline placebo IV PLUS pemetrexed 500 mg/m\\^2 IV Q3W until progression. (Effective 23-Dec-2019, participants discontinued saline placebo. If documented disease progression had occurred, and participants receiving Control met certain criteria, they were eligible to switch over to receive pembrolizumab monotherapy Q3W for the remainder of the study.)"
+      }
+     ],
+     "denoms": [
+      {
+       "units": "Participants",
+       "counts": [
+        {
+         "groupId": "OG000",
+         "value": "410"
+        },
+        {
+         "groupId": "OG001",
+         "value": "206"
+        }
+       ]
+      }
+     ],
+     "classes": [
+      {
+       "categories": [
+        {
+         "measurements": [
+          {
+           "groupId": "OG000",
+           "value": "NA",
+           "lowerLimit": "NA",
+           "upperLimit": "NA",
+           "comment": "NA=Median OS not reached NA=Lower Limit OS not reached NA=Upper Limit OS not reached"
+          },
+          {
+           "groupId": "OG001",
+           "value": "11.3",
+           "lowerLimit": "8.7",
+           "upperLimit": "15.1"
+          }
+         ]
+        }
+       ]
+      }
+     ],
+     "analyses": [
+      {
+       "groupIds": [
+        "OG000",
+        "OG001"
+       ],
+       "nonInferiorityType": "SUPERIORITY",
+       "pValue": "<0.00001",
+       "statisticalMethod": "Log Rank",
+       "paramType": "Hazard Ratio (HR)",
+       "paramValue": "0.49",
+       "ciPctValue": "95",
+       "ciNumSides": "TWO_SIDED",
+       "ciLowerLimit": "0.38",
+       "ciUpperLimit": "0.64",
+       "estimateComment": "Based on Cox regression model with treatment as a covariate stratified by PD-L1 status (≥1% vs. \\<1%), platinum chemotherapy (cisplatin vs. carboplatin) \\& smoking status (never vs. former/current). Pembrolizumab=numerator; Control=denominator."
+      }
+     ]
+    },
+    {
+     "type": "SECONDARY",
+     "title": "Overall Response Rate (ORR) Per RECIST 1.1 as Assessed by Blinded Central Imaging",
+     "description": "ORR was defined as the percentage of participants in the analysis population who had a Complete Response (CR: Disappearance of all target lesions) or a Partial Response (PR: ≥30% decrease in the sum of diameters of target lesions, taking as reference the baseline sum diameters) per RECIST 1.1. The percentage of participants who experienced a CR or PR is presented.",
+     "populationDescription": "The analysis population consisted of all randomized participants.",
+     "reportingStatus": "POSTED",
+     "paramType": "NUMBER",
+     "dispersionType": "95% Confidence Interval",
+     "unitOfMeasure": "Percentage of Participants",
+     "timeFrame": "Up to approximately 21 months",
+     "groups": [
+      {
+       "id": "OG000",
+       "title": "Pembrolizumab+Pemetrexed+Platinum Chemotherapy Followed by Pembrolizumab+Pemetrexed",
+       "description": "Participants received pembrolizumab 200 mg IV PLUS pemetrexed 500 mg/m\\^2 IV (with vitamin supplementation) PLUS cisplatin 75 mg/m\\^2 IV OR carboplatin AUC 5 IV on Day 1 of every 3-week cycle (Q3W) for 4 cycles followed by pembrolizumab 200 mg IV PLUS pemetrexed 500 mg/m\\^2 IV Q3W until progression. (Participants who received pembrolizumab 200 mg IV Q3W for up to 2 years but experienced disease progression, were eligible to receive a second course of pembrolizumab monotherapy 200 mg IV Q3W, at the investigator's discretion, for up to 1 additional year.)"
+      },
+      {
+       "id": "OG001",
+       "title": "Control",
+       "description": "Participants received saline placebo IV PLUS pemetrexed 500 mg/m\\^2 IV (with vitamin supplementation) PLUS cisplatin 75 mg/m\\^2 IV OR carboplatin AUC 5 IV on Day 1 of every 3-week cycle (Q3W) for 4 cycles followed by saline placebo IV PLUS pemetrexed 500 mg/m\\^2 IV Q3W until progression. (Effective 23-Dec-2019, participants discontinued saline placebo. If documented disease progression had occurred, and participants receiving Control met certain criteria, they were eligible to switch over to receive pembrolizumab monotherapy Q3W for the remainder of the study.)"
+      }
+     ],
+     "denoms": [
+      {
+       "units": "Participants",
+       "counts": [
+        {
+         "groupId": "OG000",
+         "value": "410"
+        },
+        {
+         "groupId": "OG001",
+         "value": "206"
+        }
+       ]
+      }
+     ],
+     "classes": [
+      {
+       "categories": [
+        {
+         "measurements": [
+          {
+           "groupId": "OG000",
+           "value": "47.6",
+           "lowerLimit": "42.6",
+           "upperLimit": "52.5"
+          },
+          {
+           "groupId": "OG001",
+           "value": "18.9",
+           "lowerLimit": "13.8",
+           "upperLimit": "25.0"
+          }
+         ]
+        }
+       ]
+      }
+     ],
+     "analyses": [
+      {
+       "groupIds": [
+        "OG000",
+        "OG001"
+       ],
+       "nonInferiorityType": "SUPERIORITY",
+       "pValue": "<0.0001",
+       "pValueComment": "H0:Difference in percentages=0 vs H1:Difference in percentages\\>0",
+       "statisticalMethod": "Stratified Miettinen and Nurminen",
+       "paramType": "Difference in Percentage vs. Control",
+       "paramValue": "28.5",
+       "ciPctValue": "95",
+       "ciNumSides": "TWO_SIDED",
+       "ciLowerLimit": "21.1",
+       "ciUpperLimit": "35.4",
+       "estimateComment": "Miettinen and Nurminen method with treatment as a covariate stratified by PD-L1 status (≥1% vs. \\<1%), platinum chemotherapy (cisplatin vs. carboplatin) \\& smoking status (never vs. former/current). Pembrolizumab=numerator; Control=denominator."
+      }
+     ]
+    },
+    {
+     "type": "SECONDARY",
+     "title": "Duration of Response (DOR) Per RECIST 1.1 as Assessed by Blinded Central Imaging",
+     "description": "For participants who demonstrated a confirmed CR (disappearance of all target lesions) or PR (≥30% decrease in the sum of diameters of target lesions) per RECIST 1.1, DOR was defined as the time from first documented evidence of a CR or PR until PD or death. DOR for participants who had not progressed or died at the time of analysis was to be censored at the date of their last tumor assessment. Per RECIST 1.1, PD was defined as ≥20% increase in the sum of diameters of target lesions. In addition to the relative increase of 20%, the sum must also have demonstrated an absolute increase of ≥5 mm. Note: The appearance of one or more new lesions was also considered PD. DOR assessments were based on blinded central imaging review with confirmation. The DOR per RECIST 1.1 for all participants who experienced a confirmed CR or PR is presented.",
+     "populationDescription": "The analysis population consisted of all randomized participants who experienced a confirmed CR or confirmed PR.",
+     "reportingStatus": "POSTED",
+     "paramType": "MEDIAN",
+     "dispersionType": "Full Range",
+     "unitOfMeasure": "Months",
+     "timeFrame": "Up to approximately 21 months",
+     "groups": [
+      {
+       "id": "OG000",
+       "title": "Pembrolizumab+Pemetrexed+Platinum Chemotherapy Followed by Pembrolizumab+Pemetrexed",
+       "description": "Participants received pembrolizumab 200 mg IV PLUS pemetrexed 500 mg/m\\^2 IV (with vitamin supplementation) PLUS cisplatin 75 mg/m\\^2 IV OR carboplatin AUC 5 IV on Day 1 of every 3-week cycle (Q3W) for 4 cycles followed by pembrolizumab 200 mg IV PLUS pemetrexed 500 mg/m\\^2 IV Q3W until progression. (Participants who received pembrolizumab 200 mg IV Q3W for up to 2 years but experienced disease progression, were eligible to receive a second course of pembrolizumab monotherapy 200 mg IV Q3W, at the investigator's discretion, for up to 1 additional year.)"
+      },
+      {
+       "id": "OG001",
+       "title": "Control",
+       "description": "Participants received saline placebo IV PLUS pemetrexed 500 mg/m\\^2 IV (with vitamin supplementation) PLUS cisplatin 75 mg/m\\^2 IV OR carboplatin AUC 5 IV on Day 1 of every 3-week cycle (Q3W) for 4 cycles followed by saline placebo IV PLUS pemetrexed 500 mg/m\\^2 IV Q3W until progression. (Effective 23-Dec-2019, participants discontinued saline placebo. If documented disease progression had occurred, and participants receiving Control met certain criteria, they were eligible to switch over to receive pembrolizumab monotherapy Q3W for the remainder of the study.)"
+      }
+     ],
+     "denoms": [
+      {
+       "units": "Participants",
+       "counts": [
+        {
+         "groupId": "OG000",
+         "value": "195"
+        },
+        {
+         "groupId": "OG001",
+         "value": "39"
+        }
+       ]
+      }
+     ],
+     "classes": [
+      {
+       "categories": [
+        {
+         "measurements": [
+          {
+           "groupId": "OG000",
+           "value": "11.2",
+           "lowerLimit": "1.1",
+           "upperLimit": "18.0"
+          },
+          {
+           "groupId": "OG001",
+           "value": "7.8",
+           "lowerLimit": "2.1",
+           "upperLimit": "16.4"
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "type": "SECONDARY",
+     "title": "Number of Participants Who Experienced an Adverse Event (AE)",
+     "description": "An AE was defined as any untoward medical occurrence in a study participant administered study drug and which does not necessarily have to have a causal relationship with this study drug. The number of participants who experienced an AE is presented.",
+     "populationDescription": "The analysis population consisted of all randomized participants who received ≥1 dose of study drug.",
+     "reportingStatus": "POSTED",
+     "paramType": "COUNT_OF_PARTICIPANTS",
+     "unitOfMeasure": "Participants",
+     "timeFrame": "Up to approximately 21 months (Serious AEs: Up to 90 days after last dose of study treatment; Other AEs: Up to 30 days after last dose of study treatment)",
+     "groups": [
+      {
+       "id": "OG000",
+       "title": "Pembrolizumab+Pemetrexed+Platinum Chemotherapy Followed by Pembrolizumab+Pemetrexed",
+       "description": "Participants received pembrolizumab 200 mg IV PLUS pemetrexed 500 mg/m\\^2 IV (with vitamin supplementation) PLUS cisplatin 75 mg/m\\^2 IV OR carboplatin AUC 5 IV on Day 1 of every 3-week cycle (Q3W) for 4 cycles followed by pembrolizumab 200 mg IV PLUS pemetrexed 500 mg/m\\^2 IV Q3W until progression. (Participants who received pembrolizumab 200 mg IV Q3W for up to 2 years but experienced disease progression, were eligible to receive a second course of pembrolizumab monotherapy 200 mg IV Q3W, at the investigator's discretion, for up to 1 additional year.)"
+      },
+      {
+       "id": "OG001",
+       "title": "Control",
+       "description": "Participants received saline placebo IV PLUS pemetrexed 500 mg/m\\^2 IV (with vitamin supplementation) PLUS cisplatin 75 mg/m\\^2 IV OR carboplatin AUC 5 IV on Day 1 of every 3-week cycle (Q3W) for 4 cycles followed by saline placebo IV PLUS pemetrexed 500 mg/m\\^2 IV Q3W until progression. (Effective 23-Dec-2019, participants discontinued saline placebo. If documented disease progression had occurred, and participants receiving Control met certain criteria, they were eligible to switch over to receive pembrolizumab monotherapy Q3W for the remainder of the study.)"
+      }
+     ],
+     "denoms": [
+      {
+       "units": "Participants",
+       "counts": [
+        {
+         "groupId": "OG000",
+         "value": "405"
+        },
+        {
+         "groupId": "OG001",
+         "value": "202"
+        }
+       ]
+      }
+     ],
+     "classes": [
+      {
+       "categories": [
+        {
+         "measurements": [
+          {
+           "groupId": "OG000",
+           "value": "404"
+          },
+          {
+           "groupId": "OG001",
+           "value": "200"
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "type": "SECONDARY",
+     "title": "Number of Participants Who Discontinued Any Study Drug Due to an AE",
+     "description": "An AE was defined as any untoward medical occurrence in a study participant administered study drug and which does not necessarily have to have a causal relationship with this study drug. The number of participants who discontinued any randomized study drug due to an AE is presented.",
+     "populationDescription": "The analysis population consisted of all randomized participants who received ≥1 dose of study drug.",
+     "reportingStatus": "POSTED",
+     "paramType": "COUNT_OF_PARTICIPANTS",
+     "unitOfMeasure": "Participants",
+     "timeFrame": "Up to approximately 21 months",
+     "groups": [
+      {
+       "id": "OG000",
+       "title": "Pembrolizumab+Pemetrexed+Platinum Chemotherapy Followed by Pembrolizumab+Pemetrexed",
+       "description": "Participants received pembrolizumab 200 mg IV PLUS pemetrexed 500 mg/m\\^2 IV (with vitamin supplementation) PLUS cisplatin 75 mg/m\\^2 IV OR carboplatin AUC 5 IV on Day 1 of every 3-week cycle (Q3W) for 4 cycles followed by pembrolizumab 200 mg IV PLUS pemetrexed 500 mg/m\\^2 IV Q3W until progression. (Participants who received pembrolizumab 200 mg IV Q3W for up to 2 years but experienced disease progression, were eligible to receive a second course of pembrolizumab monotherapy 200 mg IV Q3W, at the investigator's discretion, for up to 1 additional year.)"
+      },
+      {
+       "id": "OG001",
+       "title": "Control",
+       "description": "Participants received saline placebo IV PLUS pemetrexed 500 mg/m\\^2 IV (with vitamin supplementation) PLUS cisplatin 75 mg/m\\^2 IV OR carboplatin AUC 5 IV on Day 1 of every 3-week cycle (Q3W) for 4 cycles followed by saline placebo IV PLUS pemetrexed 500 mg/m\\^2 IV Q3W until progression. (Effective 23-Dec-2019, participants discontinued saline placebo. If documented disease progression had occurred, and participants receiving Control met certain criteria, they were eligible to switch over to receive pembrolizumab monotherapy Q3W for the remainder of the study.)"
+      }
+     ],
+     "denoms": [
+      {
+       "units": "Participants",
+       "counts": [
+        {
+         "groupId": "OG000",
+         "value": "405"
+        },
+        {
+         "groupId": "OG001",
+         "value": "202"
+        }
+       ]
+      }
+     ],
+     "classes": [
+      {
+       "categories": [
+        {
+         "measurements": [
+          {
+           "groupId": "OG000",
+           "value": "112"
+          },
+          {
+           "groupId": "OG001",
+           "value": "30"
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "type": "OTHER_PRE_SPECIFIED",
+     "title": "Progression-Free Survival (PFS) as Assessed by Investigator Immune-related RECIST (irRECIST) Response Criteria",
+     "description": "PFS was defined as the time from randomization to the first documented immune-related progressive disease (irPD) or death due to any cause, whichever occurred first. Per irRECIST, irPD was confirmed if any of the following are observed in 2 scans performed at least 4 weeks apart: target lesion sum of diameters remains ≥20 % and at least 5 mm absolute increase compared to nadir; non-target disease resulting in initial PD is qualitatively worse; new lesion resulting in initial irPD is qualitatively worse; additional new lesion(s) since last evaluation; or additional new non-target lesion progression since last evaluation. The PFS per irRECIST 1.1 is presented.",
+     "populationDescription": "The analysis population consisted of all randomized participants.",
+     "reportingStatus": "POSTED",
+     "paramType": "MEDIAN",
+     "dispersionType": "95% Confidence Interval",
+     "unitOfMeasure": "Months",
+     "timeFrame": "Up to approximately 39 months",
+     "groups": [
+      {
+       "id": "OG000",
+       "title": "Pembrolizumab+Pemetrexed+Platinum Chemotherapy Followed by Pembrolizumab+Pemetrexed",
+       "description": "Participants received pembrolizumab 200 mg IV PLUS pemetrexed 500 mg/m\\^2 IV (with vitamin supplementation) PLUS cisplatin 75 mg/m\\^2 IV OR carboplatin AUC 5 IV on Day 1 of every 3-week cycle (Q3W) for 4 cycles followed by pembrolizumab 200 mg IV PLUS pemetrexed 500 mg/m\\^2 IV Q3W until progression. (Participants who received pembrolizumab 200 mg IV Q3W for up to 2 years but experienced disease progression, were eligible to receive a second course of pembrolizumab monotherapy 200 mg IV Q3W, at the investigator's discretion, for up to 1 additional year.)"
+      },
+      {
+       "id": "OG001",
+       "title": "Control",
+       "description": "Participants received saline placebo IV PLUS pemetrexed 500 mg/m\\^2 IV (with vitamin supplementation) PLUS cisplatin 75 mg/m\\^2 IV OR carboplatin AUC 5 IV on Day 1 of every 3-week cycle (Q3W) for 4 cycles followed by saline placebo IV PLUS pemetrexed 500 mg/m\\^2 IV Q3W until progression. (Effective 23-Dec-2019, participants discontinued saline placebo. If documented disease progression had occurred, and participants receiving Control met certain criteria, they were eligible to switch over to receive pembrolizumab monotherapy Q3W for the remainder of the study.)"
+      }
+     ],
+     "denoms": [
+      {
+       "units": "Participants",
+       "counts": [
+        {
+         "groupId": "OG000",
+         "value": "410"
+        },
+        {
+         "groupId": "OG001",
+         "value": "206"
+        }
+       ]
+      }
+     ],
+     "classes": [
+      {
+       "categories": [
+        {
+         "measurements": [
+          {
+           "groupId": "OG000",
+           "value": "10.3",
+           "lowerLimit": "9.0",
+           "upperLimit": "11.3"
+          },
+          {
+           "groupId": "OG001",
+           "value": "5.0",
+           "lowerLimit": "4.8",
+           "upperLimit": "6.0"
+          }
+         ]
+        }
+       ]
+      }
+     ],
+     "analyses": [
+      {
+       "groupIds": [
+        "OG000",
+        "OG001"
+       ],
+       "nonInferiorityType": "SUPERIORITY",
+       "pValue": "<0.00001",
+       "statisticalMethod": "Log Rank",
+       "paramType": "Hazard Ratio (HR)",
+       "paramValue": "0.49",
+       "ciPctValue": "95",
+       "ciNumSides": "TWO_SIDED",
+       "ciLowerLimit": "0.41",
+       "ciUpperLimit": "0.59",
+       "estimateComment": "Based on Cox regression model with treatment as a covariate stratified by PD-L1 status (≥1% vs. \\<1%), platinum chemotherapy (cisplatin vs. carboplatin) \\& smoking status (never vs. former/current). Pembrolizumab=numerator; Control=denominator."
+      }
+     ]
+    }
+   ]
+  },
+  "adverseEventsModule": {
+   "frequencyThreshold": "5",
+   "timeFrame": "Up to approximately 88 months",
+   "description": "Safety Population: All participants receiving ≥1 dose of randomized study drug. All-Cause Mortality Population: All randomized participants. Per protocol, progression of cancer under study was not considered an AE unless related to study drug. Therefore, MedDRA preferred terms \"Neoplasm progression\", \"Malignant neoplasm progression\" \\& \"Disease progression\" not related to study drug are excluded as AEs.",
+   "eventGroups": [
+    {
+     "id": "EG000",
+     "title": "Pembrolizumab+Pemetrexed+Platinum Chemotherapy Followed by Pembrolizumab+Pemetrexed",
+     "description": "Participants received pembrolizumab 200 mg IV PLUS pemetrexed 500 mg/m\\^2 IV (with vitamin supplementation) PLUS cisplatin 75 mg/m\\^2 IV OR carboplatin AUC 5 IV on Day 1 of every 3-week cycle (Q3W) for 4 cycles followed by pembrolizumab 200 mg IV PLUS pemetrexed 500 mg/m\\^2 IV Q3W until progression. (Participants who received pembrolizumab 200 mg IV Q3W for up to 2 years but experienced disease progression, were eligible to receive a second course of pembrolizumab monotherapy 200 mg IV Q3W, at the investigator's discretion, for up to 1 additional year.)",
+     "deathsNumAffected": 330,
+     "deathsNumAtRisk": 410,
+     "seriousNumAffected": 233,
+     "seriousNumAtRisk": 405,
+     "otherNumAffected": 395,
+     "otherNumAtRisk": 405
+    },
+    {
+     "id": "EG001",
+     "title": "Control",
+     "description": "Participants received saline placebo IV PLUS pemetrexed 500 mg/m\\^2 IV (with vitamin supplementation) PLUS cisplatin 75 mg/m\\^2 IV OR carboplatin AUC 5 IV on Day 1 of every 3-week cycle (Q3W) for 4 cycles followed by saline placebo IV PLUS pemetrexed 500 mg/m\\^2 IV Q3W until progression. (Effective 23-Dec-2019, participants discontinued saline placebo. If documented disease progression had occurred, and participants receiving Control met certain criteria, they were eligible to switch over to receive pembrolizumab monotherapy Q3W for the remainder of the study.)",
+     "deathsNumAffected": 113,
+     "deathsNumAtRisk": 206,
+     "seriousNumAffected": 102,
+     "seriousNumAtRisk": 202,
+     "otherNumAffected": 196,
+     "otherNumAtRisk": 202
+    },
+    {
+     "id": "EG002",
+     "title": "Control Switched Over to Pembrolizumab Monotherapy",
+     "description": "Qualified participants who received saline placebo with pemetrexed and platinum chemotherapy followed by placebo and pemetrexed, and who experienced disease progression, were switched over to receive pembrolizumab monotherapy 200 mg IV on Day 1 Q3W for up to 2 years.",
+     "deathsNumAffected": 74,
+     "deathsNumAtRisk": 84,
+     "seriousNumAffected": 29,
+     "seriousNumAtRisk": 84,
+     "otherNumAffected": 64,
+     "otherNumAtRisk": 84
+    },
+    {
+     "id": "EG003",
+     "title": "Control Switched Over to Pembrolizumab Monotherapy (Second Course)",
+     "description": "Participants who were switched from saline placebo to receive pembrolizumab monotherapy, and met certain criteria, received a second course of pembrolizumab monotherapy at 200 mg IV Q3W for up to 1 additional year.",
+     "deathsNumAffected": 1,
+     "deathsNumAtRisk": 2,
+     "seriousNumAffected": 0,
+     "seriousNumAtRisk": 2,
+     "otherNumAffected": 2,
+     "otherNumAtRisk": 2
+    },
+    {
+     "id": "EG004",
+     "title": "Pembrolizumab+Pemetrexed+Platinum Chemotherapy Followed by Pembrolizumab+Pemetrexed (Second Course)",
+     "description": "Participants who received pembrolizumab PLUS pemetrexed and platinum chemotherapy followed by pembrolizumab PLUS pemetrexed during the initial treatment but experienced disease progression, and met certain criteria, received a second course of pembrolizumab monotherapy at 200 mg IV Q3W for up to 1 additional year.",
+     "deathsNumAffected": 4,
+     "deathsNumAtRisk": 9,
+     "seriousNumAffected": 2,
+     "seriousNumAtRisk": 9,
+     "otherNumAffected": 9,
+     "otherNumAtRisk": 9
+    }
+   ],
+   "seriousEvents": [
+    {
+     "term": "Anaemia",
+     "organSystem": "Blood and lymphatic system disorders",
+     "sourceVocabulary": "MedDRA 26.0",
+     "assessmentType": "SYSTEMATIC_ASSESSMENT",
+     "stats": [
+      {
+       "groupId": "EG000",
+       "numEvents": 14,
+       "numAffected": 13,
+       "numAtRisk": 405
+      },
+      {
+       "groupId": "EG001",
+       "numEvents": 12,
+       "numAffected": 11,
+       "numAtRisk": 202
+      },
+      {
+       "groupId": "EG002",
+       "numEvents": 0,
+       "numAffected": 0,
+       "numAtRisk": 84
+      },
+      {
+       "groupId": "EG003",
+       "numEvents": 0,
+       "numAffected": 0,
+       "numAtRisk": 2
+      },
+      {
+       "groupId": "EG004",
+       "numEvents": 0,
+       "numAffected": 0,
+       "numAtRisk": 9
+      }
+     ]
+    },
+    {
+     "term": "Disseminated intravascular coagulation",
+     "organSystem": "Blood and lymphatic system disorders",
+     "sourceVocabulary": "MedDRA 26.0",
+     "assessmentType": "SYSTEMATIC_ASSESSMENT",
+     "stats": [
+      {
+       "groupId": "EG000",
+       "numEvents": 0,
+       "numAffected": 0,
+       "numAtRisk": 405
+      },
+      {
+       "groupId": "EG001",
+       "numEvents": 1,
+       "numAffected": 1,
+       "numAtRisk": 202
+      },
+      {
+       "groupId": "EG002",
+       "numEvents": 0,
+       "numAffected": 0,
+       "numAtRisk": 84
+      },
+      {
+       "groupId": "EG003",
+       "numEvents": 0,
+       "numAffected": 0,
+       "numAtRisk": 2
+      },
+      {
+       "groupId": "EG004",
+       "numEvents": 0,
+       "numAffected": 0,
+       "numAtRisk": 9
+      }
+     ]
+    },
+    {
+     "term": "Febrile neutropenia",
+     "organSystem": "Blood and lymphatic system disorders",
+     "sourceVocabulary": "MedDRA 26.0",
+     "assessmentType": "SYSTEMATIC_ASSESSMENT",
+     "stats": [
+      {
+       "groupId": "EG000",
+       "numEvents": 26,
+       "numAffected": 25,
+       "numAtRisk": 405
+      },
+      {
+       "groupId": "EG001",
+       "numEvents": 4,
+       "numAffected": 4,
+       "numAtRisk": 202
+      },
+      {
+       "groupId": "EG002",
+       "numEvents": 1,
+       "numAffected": 1,
+       "numAtRisk": 84
+      },
+      {
+       "groupId": "EG003",
+       "numEvents": 0,
+       "numAffected": 0,
+       "numAtRisk": 2
+      },
+      {
+       "groupId": "EG004",
+       "numEvents": 0,
+       "numAffected": 0,
+       "numAtRisk": 9
+      }
+     ]
+    },
+    {
+     "term": "Leukopenia",
+     "organSystem": "Blood and lymphatic system disorders",
+     "sourceVocabulary": "MedDRA 26.0",
+     "assessmentType": "SYSTEMATIC_ASSESSMENT",
+     "stats": [
+      {
+       "groupId": "EG000",
+       "numEvents": 3,
+       "numAffected": 3,
+       "numAtRisk": 405
+      },
+      {
+       "groupId": "EG001",
+       "numEvents": 1,
+       "numAffected": 1,
+       "numAtRisk": 202
+      },
+      {
+       "groupId": "EG002",
+       "numEvents": 0,
+       "numAffected": 0,
+       "numAtRisk": 84
+      },
+      {
+       "groupId": "EG003",
+       "numEvents": 0,
+       "numAffected": 0,
+       "numAtRisk": 2
+      },
+      {
+       "groupId": "EG004",
+       "numEvents": 0,
+       "numAffected": 0,
+       "numAtRisk": 9
+      }
+     ]
+    }
+   ],
+   "otherEvents": [
+    {
+     "term": "Anaemia",
+     "organSystem": "Blood and lymphatic system disorders",
+     "sourceVocabulary": "MedDRA 26.0",
+     "assessmentType": "SYSTEMATIC_ASSESSMENT",
+     "stats": [
+      {
+       "groupId": "EG000",
+       "numEvents": 253,
+       "numAffected": 186,
+       "numAtRisk": 405
+      },
+      {
+       "groupId": "EG001",
+       "numEvents": 114,
+       "numAffected": 91,
+       "numAtRisk": 202
+      },
+      {
+       "groupId": "EG002",
+       "numEvents": 8,
+       "numAffected": 6,
+       "numAtRisk": 84
+      },
+      {
+       "groupId": "EG003",
+       "numEvents": 0,
+       "numAffected": 0,
+       "numAtRisk": 2
+      },
+      {
+       "groupId": "EG004",
+       "numEvents": 0,
+       "numAffected": 0,
+       "numAtRisk": 9
+      }
+     ]
+    },
+    {
+     "term": "Leukopenia",
+     "organSystem": "Blood and lymphatic system disorders",
+     "sourceVocabulary": "MedDRA 26.0",
+     "assessmentType": "SYSTEMATIC_ASSESSMENT",
+     "stats": [
+      {
+       "groupId": "EG000",
+       "numEvents": 44,
+       "numAffected": 26,
+       "numAtRisk": 405
+      },
+      {
+       "groupId": "EG001",
+       "numEvents": 18,
+       "numAffected": 13,
+       "numAtRisk": 202
+      },
+      {
+       "groupId": "EG002",
+       "numEvents": 0,
+       "numAffected": 0,
+       "numAtRisk": 84
+      },
+      {
+       "groupId": "EG003",
+       "numEvents": 0,
+       "numAffected": 0,
+       "numAtRisk": 2
+      },
+      {
+       "groupId": "EG004",
+       "numEvents": 0,
+       "numAffected": 0,
+       "numAtRisk": 9
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "hasResults": true
+}

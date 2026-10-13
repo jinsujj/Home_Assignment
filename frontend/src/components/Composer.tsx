@@ -12,6 +12,7 @@ const NAMES: Record<keyof StructuredFields, string> = {
   statuses: 'Status',
   start_year: 'Started from',
   end_year: 'Started until',
+  nct_id: 'Trial',
 }
 
 interface Props {

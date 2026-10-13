@@ -169,3 +169,40 @@ async def test_common_terms_come_from_registry_wide_field_stats() -> None:
     assert terms[Vocabulary.COUNTRY] == (TermCount("United States", 196050),)
     assert terms[Vocabulary.INTERVENTION] == (TermCount("Pembrolizumab", 2000),)
     assert terms[Vocabulary.SPONSOR] == ()
+
+
+async def test_find_trials_searches_acronyms_apart_and_name_variants() -> None:
+    pages = load_fixture("ctgov/keynote189_candidates.json")
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        acronym_only = request.url.params["filter.advanced"].startswith("AREA[Acronym]")
+        return httpx.Response(200, json=pages["by_acronym" if acronym_only else "by_id_or_title"])
+
+    candidates = await _source(handler).find_trials("keynote 189")
+
+    assert {c.nct_id for c in candidates} >= {"NCT02578680", "NCT03950674"}
+    acronym_query, other_query = (r.url.params["filter.advanced"] for r in requests)
+    assert acronym_query == 'AREA[Acronym]"keynote 189" OR AREA[Acronym]"keynote-189"'
+    assert 'AREA[OfficialTitle]"keynote-189"' in other_query and 'AREA[SecondaryId]"keynote 189"' in other_query
+
+
+async def test_posted_results_of_a_missing_or_unreported_trial_are_none() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("NCT00000000"):
+            return httpx.Response(404, text="Not found")
+        return httpx.Response(200, json={"protocolSection": {"identificationModule": {"nctId": "NCT05908799"}}, "hasResults": False})
+
+    source = _source(handler)
+
+    assert await source.posted_results("NCT00000000") is None
+    assert await source.posted_results("NCT05908799") is None
+
+
+async def test_posted_results_are_mapped() -> None:
+    study = load_fixture("ctgov/keynote189_results.json")
+
+    results = await _source(lambda _: httpx.Response(200, json=study)).posted_results("NCT02578680")
+
+    assert results.nct_id == "NCT02578680" and len(results.outcomes) == 7

@@ -2,7 +2,7 @@
 
 Run: uv run --env-file ../.env pytest -m llm   (OPENAI_MODEL / OPENAI_REASONING_EFFORT select the model)
 Calls OpenAI only; ClinicalTrials.gov is not queried. Each case asserts what a correct plan
-must contain, including that no unrequested filter was added.
+must contain, including that no unrequested filter was added, and refusals assert their reason.
 """
 
 import os
@@ -13,9 +13,19 @@ import pytest
 from openai import AsyncOpenAI
 
 from cheiron.adapters.outbound.openai_planner import OpenAIPlanner
-from cheiron.application.planning import Question, StructuredFields, UnsupportedQuestion
+from cheiron.application.planning import Question, Refusal, StructuredFields, UnsupportedQuestion
 from cheiron.application.visualize import plan_question
-from cheiron.domain.analysis import CoOccurrence, Correlation, CountBy, Dimension, Distribution, Entity, Measure
+from cheiron.domain.analysis import (
+    CoOccurrence,
+    Correlation,
+    CountBy,
+    Dimension,
+    Distribution,
+    Entity,
+    Measure,
+    ResultFocus,
+    TrialResults,
+)
 from cheiron.domain.trial import Phase, Status
 from cheiron.domain.trial_filter import TrialFilter
 from cheiron.main import DEFAULT_MODEL
@@ -152,13 +162,33 @@ async def test_relative_periods_resolve_against_today(planner) -> None:
 
 
 @pytest.mark.parametrize(
-    "question",
+    ("question", "expected"),
     [
-        "What were the results of the KEYNOTE-189 trial?",
-        "Should I take metformin for weight loss?",
-        "What is the capital of France?",
+        ("What were the results of the KEYNOTE-189 trial?", TrialResults("KEYNOTE-189")),
+        ("What was the overall survival in NCT02578680?", TrialResults("NCT02578680", ResultFocus.OUTCOMES, "overall survival")),
+        ("What side effects were reported in CheckMate 227?", TrialResults("CheckMate 227", ResultFocus.ADVERSE_EVENTS)),
     ],
 )
-async def test_refuses_questions_no_analysis_can_answer(planner, question) -> None:
-    with pytest.raises(UnsupportedQuestion):
+async def test_plans_a_named_trials_results(planner, question, expected) -> None:
+    plan = (await plan_question(Question(question), planner)).plan
+
+    assert isinstance(plan, TrialResults)
+    assert (plan.trial.casefold(), plan.focus, plan.outcome and plan.outcome.casefold()) == (
+        expected.trial.casefold(),
+        expected.focus,
+        expected.outcome,
+    )
+
+
+@pytest.mark.parametrize(
+    ("question", "reason"),
+    [
+        ("Should I take metformin for weight loss?", Refusal.MEDICAL_ADVICE),
+        ("What is the capital of France?", Refusal.NOT_ABOUT_TRIALS),
+    ],
+)
+async def test_refuses_questions_no_analysis_can_answer(planner, question, reason) -> None:
+    with pytest.raises(UnsupportedQuestion) as refused:
         await plan_question(Question(question), planner)
+
+    assert refused.value.reason is reason

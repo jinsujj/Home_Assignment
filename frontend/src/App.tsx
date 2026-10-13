@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { askQuestion, getOptions, runPlan } from './api/client'
+import { ApiError, askQuestion, getOptions, runPlan } from './api/client'
 import type { SearchOptions, Selection, VisualizationResponse } from './api/types'
 import { CitationPanel } from './components/CitationPanel'
 import { Composer } from './components/Composer'
@@ -17,7 +17,7 @@ export default function App() {
   const [fields, setFields] = useState<StructuredFields>(EXAMPLES[0].fields ?? {})
   const [planText, setPlanText] = useState('')
   const [result, setResult] = useState<VisualizationResponse | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<{ message: string; explained: boolean } | null>(null)
   const [loading, setLoading] = useState(true)
   const [selection, setSelection] = useState<Selection | null>(null)
   const [showRaw, setShowRaw] = useState(false)
@@ -45,7 +45,11 @@ export default function App() {
         setError(null)
       })
       .catch((e: unknown) => {
-        if (!controller.signal.aborted) setError(e instanceof Error ? e.message : String(e))
+        if (!controller.signal.aborted) {
+          // The previous chart answered another question; keeping it under this message misleads.
+          setResult(null)
+          setError({ message: e instanceof Error ? e.message : String(e), explained: e instanceof ApiError && !!e.code })
+        }
       })
       .finally(() => {
         if (inFlight.current === controller) setLoading(false)
@@ -65,6 +69,12 @@ export default function App() {
     send(call, request)
   }
 
+  const showTrial = (nctId: string) => {
+    const next = { ...fields, nct_id: nctId }
+    setFields(next)
+    ask(query, next)
+  }
+
   const ask = (text = query, structured = fields) => {
     if (text.trim()) start(askQuestion, questionRequest(text.trim(), structured))
   }
@@ -80,7 +90,7 @@ export default function App() {
     try {
       start(runPlan, JSON.parse(planText))
     } catch (e) {
-      setError(`Invalid JSON: ${(e as Error).message}`)
+      setError({ message: `Invalid JSON: ${(e as Error).message}`, explained: false })
     }
   }
 
@@ -117,7 +127,7 @@ export default function App() {
 
       <main>
         <div className="results">
-          {error && <pre className="error">{error}</pre>}
+          {error && <pre className={error.explained ? 'notice' : 'error'}>{error.message}</pre>}
           {!result && loading && <p className="muted">Planning and querying ClinicalTrials.gov…</p>}
           {result && viz && (
             <>
@@ -129,6 +139,31 @@ export default function App() {
                   <p className="interpretation">
                     <strong>Understood as:</strong> {result.meta.interpretation}
                   </p>
+                )}
+                {result.meta.trial && (
+                  <div className="trial">
+                    <strong>Trial:</strong>{' '}
+                    <a href={result.meta.trial.url} target="_blank" rel="noreferrer">
+                      {result.meta.trial.nct_id}
+                    </a>{' '}
+                    {result.meta.trial.title}
+                    {result.meta.trial.alternatives.length > 0 && (
+                      <ul>
+                        {result.meta.trial.alternatives.map((t) => (
+                          <li key={t.nct_id}>
+                            Also matched{' '}
+                            <a href={t.url} target="_blank" rel="noreferrer">
+                              {t.nct_id}
+                            </a>{' '}
+                            {t.title} ({t.enrollment ?? '?'} participants){' '}
+                            <button type="button" className="link" onClick={() => showTrial(t.nct_id)}>
+                              Show this trial
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
                 )}
               </header>
               <section className={`card ${loading ? 'stale' : ''}`}>

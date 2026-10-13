@@ -24,6 +24,14 @@ class CountingSource:
             raise TrialSourceError("down")
         return TrialSearchResult(tuple(trial(f"NCT{i}") for i in range(self.size)), self.size)
 
+    async def find_trials(self, name: str) -> tuple:
+        self.calls.append(("find", name))
+        return ()
+
+    async def posted_results(self, nct_id: str):
+        self.calls.append(("results", nct_id))
+        return None
+
 
 class Version:
     def __init__(self) -> None:
@@ -148,3 +156,29 @@ async def test_failures_are_not_cached() -> None:
     await cache.search(PEMBRO, 100)
 
     assert len(inner.calls) == 2
+
+
+async def test_name_lookups_and_posted_results_are_cached_too() -> None:
+    inner, version, clock = CountingSource(), Version(), Clock()
+    cache = cache_for(inner, version, clock, version_check_seconds=600)
+
+    await cache.find_trials("KEYNOTE-189")
+    await cache.find_trials("keynote-189 ")
+    await cache.posted_results("nct02578680")
+    await cache.posted_results("NCT02578680")
+    version.value = "2026-10-13T09:00:04"
+    clock.now = 601
+    await cache.posted_results("NCT02578680")
+
+    assert inner.calls == [("find", "KEYNOTE-189"), ("results", "nct02578680"), ("results", "NCT02578680")]
+
+
+async def test_posted_results_weigh_like_many_trials() -> None:
+    inner = CountingSource(size=10)
+    cache = cache_for(inner, max_cached_trials=505)
+
+    await cache.search(PEMBRO, 100)  # 10
+    await cache.posted_results("NCT02578680")  # + 500 > 505: evicts the search
+    await cache.search(PEMBRO, 100)
+
+    assert [c[0] for c in inner.calls] == [PEMBRO, "results", PEMBRO]

@@ -27,7 +27,7 @@ function seriesChannel(c: Channel) {
 
 export function toVegaLite(viz: Visualization): TopLevelSpec {
   const rows = viz.data as Row[]
-  const { x, y, series, x2, tooltip } = viz.encoding
+  const { x, y, series, x2, tooltip, y_lower: lower, y_upper: upper } = viz.encoding
   const base = {
     $schema: 'https://vega.github.io/schema/vega-lite/v6.json' as const,
     width: 'container' as const,
@@ -40,19 +40,29 @@ export function toVegaLite(viz: Visualization): TopLevelSpec {
     case 'bar_chart':
       return { ...base, data: { values: rows }, mark: 'bar', encoding: { x: axisChannel(x), y: axisChannel(y), tooltip: tooltipFields } }
 
-    case 'grouped_bar_chart':
+    case 'grouped_bar_chart': {
+      const grouped = { x: axisChannel(x), xOffset: seriesChannel(series), color: seriesChannel(series) }
+      if (!lower || !upper) {
+        return { ...base, data: { values: rows }, mark: 'bar', encoding: { ...grouped, y: axisChannel(y), tooltip: tooltipFields } }
+      }
+      // Posted intervals (e.g. 95% CI) drawn as error bars over the bars.
+      const interval = [
+        { field: lower.field, title: lower.title },
+        { field: upper.field, title: upper.title },
+      ]
       return {
         ...base,
         data: { values: rows },
-        mark: 'bar',
-        encoding: {
-          x: axisChannel(x),
-          y: axisChannel(y),
-          xOffset: seriesChannel(series),
-          color: seriesChannel(series),
-          tooltip: tooltipFields,
-        },
+        encoding: grouped,
+        layer: [
+          { mark: 'bar', encoding: { y: axisChannel(y), tooltip: [...tooltipFields, ...interval] } },
+          {
+            mark: { type: 'rule', strokeWidth: 1.5 },
+            encoding: { y: { field: lower.field, type: 'quantitative' }, y2: { field: upper.field }, color: { value: '#1d2228' } },
+          },
+        ],
       }
+    }
 
     case 'time_series':
       return {

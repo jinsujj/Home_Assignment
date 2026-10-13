@@ -78,10 +78,10 @@ async def test_planning_fails_after_the_correction_round() -> None:
 
 
 async def test_unsupported_questions_are_not_retried() -> None:
-    planner = ScriptedPlanner(draft(answerable=False, unsupported_reason="Asks for results.", kind=None))
+    planner = ScriptedPlanner(draft(answerable=False, refusal="medical_advice", kind=None))
 
     with pytest.raises(UnsupportedQuestion):
-        await plan_question(Question("What were the results of KEYNOTE-189?"), planner)
+        await plan_question(Question("Should I take metformin for weight loss?"), planner)
     assert len(planner.feedback) == 1
 
 

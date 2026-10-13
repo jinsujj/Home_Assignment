@@ -15,7 +15,7 @@ def draft(**overrides) -> PlanDraft:
     base = {
         "interpretation": "Trials by phase.",
         "answerable": True,
-        "unsupported_reason": None,
+        "refusal": None,
         "kind": "count_by",
         "cohorts": [cohort()],
         "dimension": "phase",
@@ -26,5 +26,8 @@ def draft(**overrides) -> PlanDraft:
         "measure": None,
         "x": None,
         "y": None,
+        "trial": None,
+        "result_focus": None,
+        "outcome": None,
     }
     return PlanDraft.model_validate(base | overrides)

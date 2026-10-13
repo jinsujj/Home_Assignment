@@ -43,5 +43,9 @@ def to_params(criteria: TrialFilter) -> dict[str, str]:
     return params
 
 
-def _clean(text: str) -> str:
+def essie_phrase(text: str) -> str:
+    """Free text made safe to place inside an Essie expression."""
     return " ".join(_ESSIE_SYNTAX.sub(" ", text).split())
+
+
+_clean = essie_phrase

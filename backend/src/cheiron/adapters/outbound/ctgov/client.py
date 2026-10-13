@@ -8,7 +8,15 @@ import httpx
 
 from cheiron.adapters.outbound.ctgov.mapper import FIELDS, SITE_FIELDS, to_trial
 from cheiron.adapters.outbound.ctgov.params import to_params
-from cheiron.application.ports import TermCount, TrialSearchResult, TrialSourceError, Vocabulary
+from cheiron.adapters.outbound.ctgov.results_mapper import (
+    CANDIDATE_FIELDS,
+    NAME_AREAS,
+    name_variants,
+    to_candidate,
+    to_results,
+)
+from cheiron.application.ports import TermCount, TrialCandidate, TrialSearchResult, TrialSourceError, Vocabulary
+from cheiron.domain.results import PostedResults
 from cheiron.domain.trial_filter import TrialFilter
 
 BASE_URL = "https://clinicaltrials.gov/api/v2"
@@ -67,7 +75,30 @@ class CtGovTrialSource:
             for vocabulary, piece in _VOCABULARY_PIECES.items()
         }
 
-    async def _get(self, params: dict[str, str], path: str = "/studies") -> Any:
+    async def find_trials(self, name: str) -> tuple[TrialCandidate, ...]:
+        """Studies whose acronym, study IDs or titles contain `name` as a phrase.
+
+        The registry indexes "KEYNOTE-189" as one term, so "KEYNOTE 189" is also searched
+        hyphenated. Acronyms get their own query: common words ("RECOVERY") appear in
+        thousands of titles and would crowd out the trial actually named so.
+        """
+        phrases = name_variants(name)
+        if not phrases:
+            return ()
+        any_phrase = lambda areas: " OR ".join(f'AREA[{a}]"{p}"' for a in areas for p in phrases)  # noqa: E731
+        by_acronym = await self._get({"filter.advanced": any_phrase(NAME_AREAS[:1]), "fields": CANDIDATE_FIELDS, "pageSize": "1000"})
+        by_id_or_title = await self._get({"filter.advanced": any_phrase(NAME_AREAS[1:]), "fields": CANDIDATE_FIELDS, "pageSize": "100"})
+        studies = {s["protocolSection"]["identificationModule"]["nctId"]: s for s in by_id_or_title.get("studies", [])}
+        studies |= {s["protocolSection"]["identificationModule"]["nctId"]: s for s in by_acronym.get("studies", [])}
+        return tuple(to_candidate(study, name) for study in studies.values())
+
+    async def posted_results(self, nct_id: str) -> PostedResults | None:
+        study = await self._get({}, path=f"/studies/{nct_id}", missing_ok=True)
+        if not study or not study.get("hasResults") or "resultsSection" not in study:
+            return None
+        return to_results(study)
+
+    async def _get(self, params: dict[str, str], path: str = "/studies", missing_ok: bool = False) -> Any:
         for attempt, delay in enumerate((*self._retry_delays, None)):
             try:
                 response = await self._http.get(self._base_url + path, params=params)
@@ -77,6 +108,8 @@ class CtGovTrialSource:
             else:
                 if response.status_code == 200:
                     return response.json()
+                if response.status_code == 404 and missing_ok:
+                    return None
                 if response.status_code != 429 and response.status_code < 500:
                     raise TrialSourceError(
                         f"ClinicalTrials.gov rejected the query ({response.status_code}): {response.text.strip()}"

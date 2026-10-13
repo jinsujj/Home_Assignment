@@ -72,12 +72,24 @@ export interface CohortMeta {
   truncated: boolean
 }
 
+export interface TrialOption {
+  nct_id: string
+  title: string
+  url: string
+  enrollment: number | null
+}
+
+export interface TrialMeta extends TrialOption {
+  alternatives: TrialOption[]
+}
+
 export interface Meta {
   source: string
   query: string | null
   interpretation: string | null
   plan: unknown
   cohorts: CohortMeta[]
+  trial: TrialMeta | null
   notes: string[]
 }
 

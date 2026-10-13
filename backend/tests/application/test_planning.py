@@ -1,7 +1,15 @@
 import pytest
 
-from cheiron.application.planning import DraftRejected, Question, StructuredFields, UnsupportedQuestion, ground
-from cheiron.domain.analysis import CoOccurrence, CountBy, Dimension, Entity
+from cheiron.application.planning import (
+    REFUSAL_MESSAGES,
+    DraftRejected,
+    Question,
+    Refusal,
+    StructuredFields,
+    UnsupportedQuestion,
+    ground,
+)
+from cheiron.domain.analysis import CoOccurrence, CountBy, Dimension, Entity, ResultFocus, TrialResults
 from cheiron.domain.trial import Phase, Status
 from cheiron.domain.trial_filter import TrialFilter
 from tests.application.planning_factories import cohort, draft, text
@@ -133,13 +141,22 @@ def test_structured_years_map_to_start_year_range() -> None:
     assert plan.cohorts[0].filter == TrialFilter(condition="asthma", start_year_from=2015, start_year_to=2020)
 
 
-def test_unanswerable_questions_are_refused_with_the_reason() -> None:
-    proposal = draft(answerable=False, unsupported_reason="Asks for one trial's results.", kind=None)
+def test_refusals_use_fixed_wording_for_the_chosen_reason() -> None:
+    # The planner only picks a reason; free-text reasons were inaccurate and varied per call.
+    proposal = draft(answerable=False, refusal="medical_advice", kind=None, interpretation="I would advise...")
 
     with pytest.raises(UnsupportedQuestion) as refused:
-        ground(proposal, Question("What were the results of KEYNOTE-189?"))
+        ground(proposal, Question("Should I take metformin for weight loss?"))
 
-    assert refused.value.reason == "Asks for one trial's results."
+    assert refused.value.reason is Refusal.MEDICAL_ADVICE
+    assert refused.value.message == REFUSAL_MESSAGES[Refusal.MEDICAL_ADVICE]
+
+
+def test_refusals_without_a_reason_fall_back_to_other() -> None:
+    with pytest.raises(UnsupportedQuestion) as refused:
+        ground(draft(answerable=False, kind=None), Question("?"))
+
+    assert refused.value.reason is Refusal.OTHER
 
 
 @pytest.mark.parametrize(
@@ -186,3 +203,54 @@ def test_labels_default_to_the_main_filter() -> None:
     plan = ground(proposal, Question("drugs combined in melanoma trials")).plan
 
     assert plan == CoOccurrence(plan.cohort.__class__("melanoma", TrialFilter(condition="melanoma")), Entity.DRUG, Entity.DRUG)
+
+
+# --- trial_results -------------------------------------------------------------------------
+
+
+def results_draft(**overrides):
+    base = {"kind": "trial_results", "cohorts": [], "dimension": None, "trial": text("KEYNOTE-189"), "result_focus": "outcomes"}
+    return draft(**(base | overrides))
+
+
+def test_a_named_trial_becomes_a_results_plan() -> None:
+    proposal = results_draft(outcome=text("overall survival"))
+
+    grounded = ground(proposal, Question("What was the overall survival in KEYNOTE-189?"))
+
+    assert grounded.plan == TrialResults("KEYNOTE-189", ResultFocus.OUTCOMES, "overall survival")
+
+
+def test_the_trial_must_be_named_in_the_question() -> None:
+    proposal = results_draft(trial=text("KEYNOTE-189", "the Merck lung trial"))
+
+    with pytest.raises(DraftRejected, match="must be named in the question"):
+        ground(proposal, Question("What were the results of the big pembrolizumab lung trial?"), drop_unquoted=True)
+
+
+def test_a_requested_nct_id_overrides_the_named_trial() -> None:
+    question = Question("What were the results of KEYNOTE-189?", StructuredFields(nct_id="NCT03950674"))
+
+    grounded = ground(results_draft(), question)
+
+    assert grounded.plan.trial == "NCT03950674"
+    assert grounded.notes == ("Using the requested trial NCT03950674.",)
+
+
+def test_cohort_filters_do_not_apply_to_one_trial() -> None:
+    question = Question("Adverse events in KEYNOTE-189", StructuredFields(country="South Korea"))
+
+    grounded = ground(results_draft(result_focus="adverse_events"), question)
+
+    assert grounded.plan.focus is ResultFocus.ADVERSE_EVENTS
+    assert grounded.notes == ("The request's filters (country) do not apply to one trial's posted results and were ignored.",)
+
+
+def test_an_unquoted_outcome_is_dropped_on_the_last_attempt() -> None:
+    proposal = results_draft(outcome=text("progression-free survival"))
+
+    with pytest.raises(DraftRejected):
+        ground(proposal, Question("Results of KEYNOTE-189?"))
+    grounded = ground(proposal, Question("Results of KEYNOTE-189?"), drop_unquoted=True)
+
+    assert grounded.plan.outcome is None

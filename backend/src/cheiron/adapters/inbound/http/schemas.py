@@ -23,10 +23,12 @@ from cheiron.domain.analysis import (
     Distribution,
     Entity,
     Measure,
+    ResultFocus,
+    TrialResults,
 )
 from cheiron.domain.trial import Phase, Status, StudyType
 from cheiron.domain.trial_filter import TrialFilter
-from cheiron.domain.visualization import Channel, ChartType
+from cheiron.domain.visualization import STUDY_URL, Channel, ChartType
 
 MAX_TRIALS_LIMIT = 10_000
 
@@ -155,10 +157,23 @@ class CorrelationIn(_PlanIn):
         return Correlation(self.cohort.to_domain(), self.x, self.y)
 
 
-type PlanIn = Annotated[CountByIn | CoOccurrenceIn | DistributionIn | CorrelationIn, Field(discriminator="kind")]
+class TrialResultsIn(_PlanIn):
+    """Posted results of one trial -> grouped bar chart of its outcomes or adverse events."""
+
+    kind: Literal["trial_results"]
+    trial: str = Field(min_length=1, max_length=200, description="NCT ID, acronym or name, e.g. 'KEYNOTE-189'.")
+    focus: ResultFocus = ResultFocus.OUTCOMES
+    outcome: str | None = Field(None, max_length=200, description="Words from an outcome title; primary outcomes if null.")
+
+    def to_domain(self) -> TrialResults:
+        return TrialResults(self.trial, self.focus, self.outcome)
 
 
-def plan_from_domain(plan: AnalysisPlan) -> CountByIn | CoOccurrenceIn | DistributionIn | CorrelationIn:
+type AnyPlanIn = CountByIn | CoOccurrenceIn | DistributionIn | CorrelationIn | TrialResultsIn
+type PlanIn = Annotated[AnyPlanIn, Field(discriminator="kind")]
+
+
+def plan_from_domain(plan: AnalysisPlan) -> AnyPlanIn:
     match plan:
         case CountBy():
             cohorts = [CohortIn.from_domain(c) for c in plan.cohorts]
@@ -176,6 +191,8 @@ def plan_from_domain(plan: AnalysisPlan) -> CountByIn | CoOccurrenceIn | Distrib
             return DistributionIn(kind="distribution", cohort=CohortIn.from_domain(plan.cohort), measure=plan.measure, bins=plan.bins)
         case Correlation():
             return CorrelationIn(kind="correlation", cohort=CohortIn.from_domain(plan.cohort), x=plan.x, y=plan.y)
+        case TrialResults():
+            return TrialResultsIn(kind="trial_results", trial=plan.trial, focus=plan.focus, outcome=plan.outcome)
 
 
 class PlanRequest(_Schema):
@@ -200,6 +217,9 @@ class VisualizeRequest(_Schema):
     statuses: list[Status] = Field(default_factory=list, description="Trials with any of these statuses.")
     start_year: int | None = Field(None, ge=1900, le=2100, description="Trials starting in or after this year.")
     end_year: int | None = Field(None, ge=1900, le=2100, description="Trials starting in or before this year.")
+    nct_id: str | None = Field(
+        None, pattern=r"^NCT\d{8}$", description="For a single trial's results: use this trial, e.g. to pick an alternative."
+    )
     max_trials_per_cohort: int = Field(DEFAULT_MAX_TRIALS, ge=1, le=MAX_TRIALS_LIMIT)
 
     @model_validator(mode="after")
@@ -220,6 +240,7 @@ class VisualizeRequest(_Schema):
                 statuses=frozenset(self.statuses),
                 start_year=self.start_year,
                 end_year=self.end_year,
+                nct_id=self.nct_id,
             ),
         )
 
@@ -245,12 +266,29 @@ class CohortMeta(BaseModel):
     truncated: bool
 
 
+class TrialOption(BaseModel):
+    nct_id: str
+    title: str
+    url: str
+    enrollment: int | None = None
+
+
+class TrialMeta(BaseModel):
+    """The single trial whose posted results are charted."""
+
+    nct_id: str
+    title: str
+    url: str
+    alternatives: list[TrialOption] = Field(description="Other trials with posted results that the name matched.")
+
+
 class Meta(BaseModel):
     source: Literal["clinicaltrials.gov"] = "clinicaltrials.gov"
     query: str | None = Field(None, description="The question, for POST /api/visualize.")
     interpretation: str | None = Field(None, description="How the question was understood, in one sentence.")
     plan: PlanIn = Field(description="The analysis that was run, including every filter applied.")
     cohorts: list[CohortMeta]
+    trial: TrialMeta | None = Field(None, description="For trial_results: the trial used.")
     notes: list[str] = Field(description="Assumptions and caveats in plain sentences.")
 
 
@@ -261,7 +299,7 @@ class VisualizationResponse(BaseModel):
     @classmethod
     def of(
         cls,
-        plan: CountByIn | CoOccurrenceIn | DistributionIn | CorrelationIn,
+        plan: AnyPlanIn,
         result: PlanResult,
         query: str | None = None,
         interpretation: str | None = None,
@@ -275,6 +313,21 @@ class VisualizationResponse(BaseModel):
                 interpretation=interpretation,
                 plan=plan,
                 cohorts=[CohortMeta(label=c.label, matched=c.matched, analyzed=c.analyzed, truncated=c.truncated) for c in result.cohorts],
+                trial=_trial_meta(result),
                 notes=[*planning_notes, *viz.notes, *result.notes],
             ),
         )
+
+
+def _trial_meta(result: PlanResult) -> TrialMeta | None:
+    if result.trial is None:
+        return None
+    return TrialMeta(
+        nct_id=result.trial.nct_id,
+        title=result.trial.title,
+        url=STUDY_URL.format(nct_id=result.trial.nct_id),
+        alternatives=[
+            TrialOption(nct_id=c.nct_id, title=c.title, url=STUDY_URL.format(nct_id=c.nct_id), enrollment=c.enrollment)
+            for c in result.trial.alternatives
+        ],
+    )

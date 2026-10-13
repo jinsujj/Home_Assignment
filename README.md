@@ -86,6 +86,7 @@ cd ../frontend && npm run build && npm run lint   # type-check, build, lint
 | `country` | string ≤ 100 | optional |
 | `phases`, `statuses` | list of registry codes (`PHASE3`, `RECRUITING`, …) | optional; any of |
 | `start_year`, `end_year` | integer 1900–2100 | optional; trials starting in `[start_year, end_year]`; start ≤ end |
+| `nct_id` | `NCT` + 8 digits | optional; for a single trial's results, use this trial (e.g. an alternative listed in `meta.trial`) |
 | `max_trials_per_cohort` | integer 1–10,000 | default 5,000 |
 
 Structured fields apply to every cohort and take precedence over what the planner extracted;
@@ -99,7 +100,9 @@ least one site in that country (for pembrolizumab in South Korea, 335 of 389 are
 |---|---|---|
 | `200` | answered | the response below, with `meta.query` and `meta.interpretation` |
 | `422` | invalid request | FastAPI's validation errors |
-| `422` | no analysis can answer it (e.g. one trial's results) | `{"detail": {"code": "unsupported_question", "message", "interpretation"}}` |
+| `422` | no analysis can answer it (medical advice, off-topic, data none of the analyses use) | `{"detail": {"code": "unsupported_question", "reason", "message"}}`, `reason` ∈ `medical_advice`, `not_about_trials`, `unavailable_data`, `other`; fixed wording per reason |
+| `422` | a named trial is not in the registry | `{"detail": {"code": "trial_not_found", "message"}}` |
+| `422` | the trial has not posted results | `{"detail": {"code": "no_posted_results", "message", "trial": {"nct_id", "url"}}}` |
 | `422` | no valid plan after one correction round | `{"detail": {"code": "plan_rejected", "message", "problems": [...]}}` |
 | `502` | ClinicalTrials.gov failed | `{"detail": "..."}` |
 | `503` | no `OPENAI_API_KEY`, or the model is unreachable | `{"detail": "..."}` |
@@ -167,6 +170,11 @@ category order to render.
 | `scatter_plot` | `x`, `y`, `tooltip` | one row per trial (`nct_id`, `title`, both measures) |
 | `network_graph` | `node_id`, `node_label`, `node_size`, `node_color`, `edge_source`, `edge_target`, `edge_weight` | `{ "nodes": [...], "edges": [...] }` |
 
+A single trial's results are a `grouped_bar_chart` (x = outcome or adverse event, series = the
+trial's groups) and may add `y_lower` / `y_upper` channels: the posted interval (e.g. 95% CI), to
+draw as error bars; a value posted as "NA" (e.g. a median not reached) is `null`. `meta.trial`
+names the trial (`nct_id`, `title`, `url`) and other trials the name matched (`alternatives`).
+
 Every row, node and edge carries `citations`:
 
 ```json
@@ -220,8 +228,12 @@ Four layers keep the planner honest (`application/planning.py`, `application/vis
    violations such as `split_by` with several cohorts) go back to the model with its previous
    draft. On the last attempt unquoted filters are dropped and reported in `meta.notes`, unless
    that leaves a compared cohort without a filter of its own, which is rejected instead.
-4. **Refusal.** Questions no analysis can answer (one trial's results, medical advice,
-   off-topic) return `422 unsupported_question` with the reason; no chart is invented.
+4. **Refusal by reason code.** Questions no analysis can answer return
+   `422 unsupported_question`; the model only picks a `refusal` enum and the message is fixed
+   text per reason. It used to write its own reason: three runs of "What were the results of
+   KEYNOTE-189?" gave three different reasons, two of them false ("registration data cannot
+   describe results", while the trial's results are posted). That question is now answered
+   (see `TrialResults` below).
 
 Why the correction round exists: in the first evaluation `gpt-4.1-mini` quoted "trials involving
 Opdivo" for "Keytruda vs Opdivo". Dropping that filter silently turned the comparison into
@@ -231,19 +243,20 @@ then planned correctly), and a cohort left without filters is rejected rather th
 The planner sees today's date (for "in the last 5 years"), the structured fields (for "this
 drug") and the grammar; it never sees trial data.
 
-**Model choice** (`tests/llm/test_planner_eval.py`: 17 cases covering every appendix question
-type, structured-field references, relative periods and three unanswerable questions, each
-asserting the exact filters so an added filter fails the case):
+**Model choice** (`tests/llm/test_planner_eval.py`: every appendix question type,
+structured-field references, relative periods, named-trial results and refusals; each case
+asserts the exact filters, so an added filter fails it, and refusals assert their reason):
 
 | Model | Result | Planner latency |
 |---|---|---|
-| `gpt-5.4-mini`, reasoning `low` (default) | 17/17 in two runs | ~1.5–2.2 s |
-| `gpt-4.1-mini` | 16/17 (Keytruda vs Opdivo failed once, passed 3/3 on rerun) | ~1.8–4.8 s |
+| `gpt-5.4-mini`, reasoning `low` (default) | 17/17 twice on the first suite; 19/19 on the current one | ~1.5–2.2 s |
+| `gpt-4.1-mini` | 16/17 on the first suite (Keytruda vs Opdivo failed once, passed 3/3 on rerun) | ~1.8–4.8 s |
 
 ### One grammar for every question: `AnalysisPlan`
 
-Rather than one code path per question type, every question is expressed in four analysis
-kinds parameterised by enums (`cheiron/domain/analysis.py`). The chart type follows from the
+Rather than one code path per question type, every question is expressed in five analysis
+kinds parameterised by enums (`cheiron/domain/analysis.py`): four over many trials, one over a
+single trial's posted results. The chart type follows from the
 plan's shape, deterministically:
 
 | Plan | Parameters | Chart | Example question |
@@ -255,6 +268,7 @@ plan's shape, deterministically:
 | `CoOccurrence` | `source`, `target` entity | `network_graph` | "Network of sponsors ↔ drugs for breast cancer." |
 | `Distribution` | `measure` | `histogram` | "How large are pembrolizumab trials?" |
 | `Correlation` | `x`, `y` measures | `scatter_plot` | "Do longer trials enrol more patients?" |
+| `TrialResults` | `trial` (NCT ID or name), `focus`, optional `outcome` | `grouped_bar_chart` with intervals | "What were the results of KEYNOTE-189?", "Side effects in CheckMate 227?" |
 
 Dimensions: phase, status, study type, start year, country, condition, intervention,
 intervention type, lead sponsor, lead sponsor class. Entities: drug, sponsor, condition,
@@ -304,7 +318,8 @@ Before caching, how often the data changes was measured rather than assumed:
   of trials.
 
 So results stay valid until the next published snapshot. `CachingTrialSource` (a decorator
-around the ClinicalTrials.gov adapter) keeps search results in memory and drops them when
+around the ClinicalTrials.gov adapter) keeps search results, trial-name lookups and posted
+results in memory and drops them when
 `dataTimestamp` changes, checking it at most every 10 minutes; a 24-hour maximum age bounds
 staleness if the check fails. A fixed TTL was rejected: it would discard valid results over
 weekends and serve stale ones for hours after a new snapshot. Capacity is counted in trials
@@ -349,6 +364,9 @@ Observed while probing the live API (v2.0.5); each is handled or noted:
 | Facilities are often generic: "Research Site" (5,880 locations in three conditions), "GSK Investigational Site" (2,264), "Local Institution", hotline texts. | Generic facilities are dropped; sites are keyed by facility + city + country, so "University Hospital, Basel" ≠ "University Hospital, Zurich". |
 | Facility and city of every location double the payload (1.9 → 4.1 MB per 1,000 studies), and one trial can list 1,151 sites (~660,000 site pairs). | Site fields are fetched only for plans with site nodes; network links are counted only among the 4 × `max_nodes` most frequent nodes (pembrolizumab site network: 25.8 s → 6.4 s, same result). |
 | `pageSize=0` means the default (10), not zero; subsequent pages must repeat the first page's parameters. | Encoded and tested in `client.py`. |
+| Trial names are ambiguous. "KEYNOTE-189" is a secondary ID only of the 40-patient Japan extension; the 616-patient main trial has it only in its title; observational "emulations" mention it too. An ID-only lookup returns the wrong trial. | `find_trials` searches acronym, study IDs and titles; `choose_trial`: exact acronym first, IDs/titles only for distinctive names (digit or several words), trials with posted results only, largest enrollment chosen, the rest returned as `meta.trial.alternatives` with a note. |
+| The registry indexes "KEYNOTE-189" as one term: "KEYNOTE 189" finds nothing. A common word ("RECOVERY") is in 5,682 titles. | Names are also searched hyphenated; acronyms get their own query; single common words only match acronyms. |
+| Posted results: medians "not reached" are posted as "NA"; dispersion is limits or a spread; adverse-event groups include crossover groups with 2 participants at risk; two groups can share a title. | "NA" is kept as text and charted as null with a note; spreads become value ± spread; groups under 10 at risk are left out of adverse-event charts (noted); duplicate titles get their group ID. |
 | `429` / `5xx` responses. | Retried with backoff (1 s, 2 s, 4 s); `4xx` fails fast with the API's message. |
 
 ### Naming: `Trial` rather than `Study`
@@ -369,16 +387,22 @@ themselves.
 
 ### Frontend: a generic renderer, not a per-question UI
 
-The React demo (`frontend/`) asks questions (with optional structured fields), shows how each
-was understood, and lets the resulting plan be edited and rerun. Filters are chosen rather than
-typed where the registry has a fixed list (country dropdown with trial counts, phase and status
-chips, year selects) and suggested elsewhere (drug, condition, sponsor), from `GET /api/options`.
-This came from use: a country typed as "korea" did filter correctly, but the chart's title did
-not show it, so the result looked unfiltered; titles now carry shared filters. Its rendering knows nothing
-about questions: it maps `type` + `encoding` to Vega-Lite (bars, time series, histograms,
-scatter) or Cytoscape (networks), and shows the citations of whatever datum is clicked. That it renders every chart kind from the spec alone
-is the evidence that the spec is renderable without guessing; building it caught one renderer
-mistake (pre-binned histograms need `bin: {binned: true}` in Vega-Lite) and no spec gaps.
+The React demo (`frontend/`) works like a chat assistant: the question box is pinned to the
+bottom, the answer scrolls above it with how the question was understood, and the resulting
+plan can be edited and rerun. Filters are chosen rather than typed where the registry has a
+fixed list (country dropdown with trial counts, phase and status chips, year selects) and
+suggested elsewhere (drug, condition, sponsor), from `GET /api/options`; active filters show as
+removable chips. For a single trial it shows the trial used, with links, and lets the user
+switch to another trial the name matched. Refusals and "no posted results" appear as neutral
+notices, not errors, and replace the previous chart.
+
+Rendering knows nothing about questions: it maps `type` + `encoding` to Vega-Lite (bars with
+optional error bars, time series, histograms, scatter) or Cytoscape (networks), and shows the
+citations of whatever datum is clicked. That it renders every chart kind from the spec alone is
+the evidence that the spec is renderable without guessing. Using it found two issues: one in
+the renderer (pre-binned histograms need `bin: {binned: true}` in Vega-Lite) and one in the
+spec (a country typed as "korea" filtered correctly, but the title did not show it, so the
+chart looked unfiltered; titles now name shared filters).
 
 ### Monorepo and Docker
 
@@ -420,6 +444,11 @@ uv provisions the interpreter locally and the Docker image is `python:3.14-slim`
 - Planning adds ~1.5–2 s per question; answers are not cached by question (data fetches are).
 - One question at a time: no follow-up questions that refer to a previous answer.
 - The evaluation covers English questions; other languages are untested.
+- A trial name matching several trials with results is resolved to the largest; it is a rule,
+  not knowledge of which is the "main" trial, so the alternatives are always shown.
+- Single-trial charts show one value scale (the first selected outcome's measure and unit; the
+  rest is listed in notes) and the 15 most frequent adverse events; results are not compared
+  across trials.
 
 _To be completed as the remaining steps land._
 
@@ -475,16 +504,18 @@ backend/
       facets.py                      a Trial's values per dimension/entity/measure, with evidence
       charts/                        one builder per plan kind → Visualization
       visualization.py               output spec: chart types, channels, citations
+      results.py                     a trial's posted outcome measures and adverse events
     application/
       ports.py                       TrialSource port, TrialSearchResult
       run_plan.py                    use case: fetch cohorts concurrently, build, report truncation
       planning.py                    PlanDraft (LLM contract), Question, grounding rules
       options.py                     filter choices from the registry vocabulary, cached
+      trial_lookup.py                which trial a name refers to (rules and alternatives)
       visualize.py                   use case: plan with one correction round, then run_plan
     adapters/
       inbound/http/                  FastAPI routes and Pydantic schemas
       outbound/openai_planner.py     QueryPlanner on OpenAI structured outputs, planner instructions
-      outbound/ctgov/                ClinicalTrials.gov client, query params, ACL mapper
+      outbound/ctgov/                ClinicalTrials.gov client, query params, ACL mappers (studies, results)
       outbound/caching.py            TrialSource decorator keyed to the data snapshot
     main.py                        composition root
   tests/                           unit, HTTP, cache and planner tests; recorded fixtures;

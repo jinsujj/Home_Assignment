@@ -106,6 +106,15 @@ export function FilterFields({ value, onChange, options }: Props) {
         {year('start_year', 'Started from')}
         {year('end_year', 'to')}
       </div>
+      <label>
+        Trial
+        <input
+          value={value.nct_id ?? ''}
+          placeholder="NCT ID, for one trial's results"
+          pattern="NCT\d{8}"
+          onChange={(e) => set({ nct_id: e.target.value.trim().toUpperCase() })}
+        />
+      </label>
       {Object.keys(value).length > 0 && (
         <button type="button" className="link" onClick={() => onChange({})}>
           Clear filters

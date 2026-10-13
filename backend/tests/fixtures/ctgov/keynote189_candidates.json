@@ -1,0 +1,124 @@
+{
+ "by_acronym": {
+  "studies": []
+ },
+ "by_id_or_title": {
+  "studies": [
+   {
+    "protocolSection": {
+     "identificationModule": {
+      "nctId": "NCT03950674",
+      "orgStudyIdInfo": {
+       "id": "3475-189 Japan Extension"
+      },
+      "secondaryIdInfos": [
+       {
+        "id": "163421"
+       },
+       {
+        "id": "MK-3475-189"
+       },
+       {
+        "id": "KEYNOTE-189"
+       }
+      ],
+      "briefTitle": "Study of Pemetrexed+Platinum Chemotherapy With or Without Pembrolizumab (MK-3475) in Participants With First Line Metastatic Nonsquamous Non-small Cell Lung Cancer (MK-3475-189/KEYNOTE-189)-Japan Extension Study",
+      "officialTitle": "A Randomized, Double-Blind, Phase III Study of Platinum+Pemetrexed Chemotherapy With or Without Pembrolizumab (MK-3475) in First Line Metastatic Non-squamous Non-small Cell Lung Cancer Subjects (KEYNOTE-189)"
+     },
+     "designModule": {
+      "enrollmentInfo": {
+       "count": 40
+      }
+     }
+    },
+    "hasResults": true
+   },
+   {
+    "protocolSection": {
+     "identificationModule": {
+      "nctId": "NCT05908799",
+      "orgStudyIdInfo": {
+       "id": "1"
+      },
+      "briefTitle": "Emulation of the KEYNOTE-189 Trial Using Electronic Health Records",
+      "officialTitle": "Emulation of a Comparative Effectiveness Study of Pembrolizumab and Chemotherapy vs. Chemotherapy for the First-line Treatment of Metastatic Non-small Cell Lung Cancer"
+     },
+     "designModule": {
+      "enrollmentInfo": {
+       "count": 1854
+      }
+     }
+    },
+    "hasResults": false
+   },
+   {
+    "protocolSection": {
+     "identificationModule": {
+      "nctId": "NCT06585189",
+      "orgStudyIdInfo": {
+       "id": "DS4-KN189"
+      },
+      "briefTitle": "CARE Initiative: Real-world Emulation of the KEYNOTE-189 Trial [DS4]",
+      "officialTitle": "CARE Initiative Study: Real-world Emulation of the KEYNOTE-189 Comparative Effectiveness Trial of Pembrolizumab, Pemetrexed, and Chemotherapy vs. Placebo, Pemetrexed, and Chemotherapy for the First-line Treatment of Metastatic Non-small Cell Lung Cancer"
+     },
+     "designModule": {
+      "enrollmentInfo": {
+       "count": 304
+      }
+     }
+    },
+    "hasResults": false
+   },
+   {
+    "protocolSection": {
+     "identificationModule": {
+      "nctId": "NCT06607393",
+      "orgStudyIdInfo": {
+       "id": "DS3-KN189"
+      },
+      "briefTitle": "CARE Initiative: Real-world Emulation of the KEYNOTE-189 Trial [DS3]",
+      "officialTitle": "CARE Initiative Study: Real-world Emulation of the KEYNOTE-189 Comparative Effectiveness Trial of Pembrolizumab, Pemetrexed, and Chemotherapy vs. Placebo, Pemetrexed, and Chemotherapy for the First-line Treatment of Metastatic Non-small Cell Lung Cancer"
+     },
+     "designModule": {
+      "enrollmentInfo": {
+       "count": 851
+      }
+     }
+    },
+    "hasResults": false
+   },
+   {
+    "protocolSection": {
+     "identificationModule": {
+      "nctId": "NCT02578680",
+      "orgStudyIdInfo": {
+       "id": "3475-189"
+      },
+      "secondaryIdInfos": [
+       {
+        "id": "163421"
+       },
+       {
+        "id": "MK-3475-189"
+       },
+       {
+        "id": "2015-003694-15"
+       },
+       {
+        "id": "2015"
+       }
+      ],
+      "briefTitle": "Study of Pemetrexed+Platinum Chemotherapy With or Without Pembrolizumab (MK-3475) in Participants With First Line Metastatic Nonsquamous Non-small Cell Lung Cancer (MK-3475-189/KEYNOTE-189)",
+      "officialTitle": "A Randomized, Double-Blind, Phase III Study of Platinum+Pemetrexed Chemotherapy With or Without Pembrolizumab (MK-3475) in First Line Metastatic Non-squamous Non-small Cell Lung Cancer Subjects (KEYNOTE-189)"
+     },
+     "designModule": {
+      "enrollmentInfo": {
+       "count": 616
+      }
+     }
+    },
+    "hasResults": true
+   }
+  ]
+ }
+}

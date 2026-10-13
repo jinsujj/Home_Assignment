@@ -1,11 +1,13 @@
-"""Use case: execute an AnalysisPlan against a TrialSource."""
+"""Use case: execute an AnalysisPlan against the registry."""
 
 import asyncio
 from dataclasses import dataclass
 
-from cheiron.application.ports import TrialSource
-from cheiron.domain.analysis import AnalysisPlan, needs_sites
+from cheiron.application.ports import Registry, TrialCandidate
+from cheiron.application.trial_lookup import NoPostedResults, choose_trial
+from cheiron.domain.analysis import AnalysisPlan, TrialResults, needs_sites
 from cheiron.domain.charts import DEFAULT_MAX_CITATIONS, build_visualization
+from cheiron.domain.charts.trial_results import build_trial_results
 from cheiron.domain.trial_filter import TrialFilter
 from cheiron.domain.visualization import Visualization
 
@@ -27,19 +29,32 @@ class CohortReport:
 
 
 @dataclass(frozen=True)
+class TrialReport:
+    """The single trial whose posted results were charted, and other trials the name matched."""
+
+    nct_id: str
+    title: str
+    alternatives: tuple[TrialCandidate, ...] = ()
+
+
+@dataclass(frozen=True)
 class PlanResult:
     visualization: Visualization
     cohorts: tuple[CohortReport, ...]
     notes: tuple[str, ...]
     """Notes about data retrieval, complementing the visualization's own notes."""
+    trial: TrialReport | None = None
 
 
 async def run_plan(
     plan: AnalysisPlan,
-    source: TrialSource,
+    source: Registry,
     max_trials_per_cohort: int = DEFAULT_MAX_TRIALS,
     max_citations: int = DEFAULT_MAX_CITATIONS,
 ) -> PlanResult:
+    if isinstance(plan, TrialResults):
+        return await _run_trial_results(plan, source)
+
     cohorts = plan.cohorts
     include_sites = needs_sites(plan)
     results = await asyncio.gather(
@@ -63,3 +78,19 @@ async def run_plan(
             "so multinational trials are included.",
         )
     return PlanResult(visualization, reports, notes)
+
+
+async def _run_trial_results(plan: TrialResults, source: Registry) -> PlanResult:
+    """Raises TrialNotFound or NoPostedResults."""
+    choice = None if plan.nct_id else await choose_trial(plan.trial, source)
+    nct_id = plan.nct_id or choice.chosen.nct_id
+    results = await source.posted_results(nct_id)
+    if results is None:
+        raise NoPostedResults(nct_id, choice.chosen.title if choice else None)
+    note = choice.note(plan.trial) if choice else None
+    return PlanResult(
+        build_trial_results(plan, results),
+        cohorts=(),
+        notes=(note,) if note else (),
+        trial=TrialReport(results.nct_id, results.title, choice.alternatives if choice else ()),
+    )

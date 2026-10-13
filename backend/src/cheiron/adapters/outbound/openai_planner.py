@@ -30,6 +30,10 @@ Choose `kind`:
   Investigators and sites are also available as entities.
 - distribution: a histogram of one measure (enrollment = trial size, duration_months, start_year).
 - correlation: one point per trial positioned by two measures.
+- trial_results: the posted results of ONE named trial ("results of KEYNOTE-189", "adverse events
+  in NCT02578680"). Set `trial` to the NCT ID or name exactly as written, `result_focus` to
+  outcomes (efficacy, survival, response) or adverse_events (safety, side effects), and `outcome`
+  only when the question names a specific outcome ("overall survival"). Leave cohorts empty.
 
 Dimensions: phase, status (overall status), study_type, start_year, country (of trial locations),
 condition, intervention, intervention_type, lead_sponsor, lead_sponsor_class (industry, NIH,
@@ -52,10 +56,12 @@ Labels: short legend names, e.g. "Pembrolizumab" and "Nivolumab" for a compariso
 Use top_n when the question asks for a top N or "the most" of a many-valued dimension
 (countries, conditions, sponsors, interventions); 10 is a good default for "the most".
 
-Set answerable=false with a reason when no analysis above can answer the question, e.g. questions
-about one trial's details, efficacy or safety results and adverse events (this service analyzes
-registration data such as phases, dates, sponsors and locations, not posted results), prices,
-treatment advice, or topics unrelated to clinical trials. State the reason in those terms.
+Set answerable=false only when no analysis above can answer the question, and pick `refusal`:
+- medical_advice: asks what someone should take or do.
+- not_about_trials: unrelated to clinical trials.
+- unavailable_data: about trials, but needs data none of the analyses use (eligibility details,
+  contacts, prices, individual patients, or results pooled across many trials).
+- other: anything else.
 
 `interpretation`: one sentence describing the analysis you planned, including its filters, so the
 user can check that the question was understood.

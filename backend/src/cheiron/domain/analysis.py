@@ -1,11 +1,12 @@
 """AnalysisPlan: the small grammar every supported question is expressed in.
 
-Four analysis kinds, each parameterised by enums, cover the question classes of the
-assignment (trends, distributions, comparisons, geography, relationships) without
-per-question code paths. The LLM planner only ever produces one of these; everything
-downstream is deterministic.
+Four analysis kinds over many trials, each parameterised by enums, cover the question
+classes of the assignment (trends, distributions, comparisons, geography, relationships)
+without per-question code paths; a fifth reads one trial's posted results. The LLM
+planner only ever produces one of these; everything downstream is deterministic.
 """
 
+import re
 from dataclasses import dataclass
 from enum import StrEnum
 
@@ -140,7 +141,37 @@ class Correlation:
         return (self.cohort,)
 
 
-type AnalysisPlan = CountBy | CoOccurrence | Distribution | Correlation
+class ResultFocus(StrEnum):
+    OUTCOMES = "outcomes"
+    ADVERSE_EVENTS = "adverse_events"
+
+
+_NCT_ID = re.compile(r"^NCT\d{8}$", re.IGNORECASE)
+
+
+@dataclass(frozen=True)
+class TrialResults:
+    """The posted results of one trial, named by NCT ID or by name (acronym, study ID, title)."""
+
+    trial: str
+    focus: ResultFocus = ResultFocus.OUTCOMES
+    outcome: str | None = None
+    """Words from the outcome measure's title, e.g. "overall survival"; None for primary outcomes."""
+
+    def __post_init__(self) -> None:
+        if not self.trial.strip():
+            raise ValueError("trial_results needs a trial name or NCT ID")
+
+    @property
+    def nct_id(self) -> str | None:
+        return self.trial.strip().upper() if _NCT_ID.match(self.trial.strip()) else None
+
+    @property
+    def cohorts(self) -> tuple[Cohort, ...]:
+        return ()
+
+
+type AnalysisPlan = CountBy | CoOccurrence | Distribution | Correlation | TrialResults
 
 
 def needs_sites(plan: AnalysisPlan) -> bool:

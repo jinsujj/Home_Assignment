@@ -16,6 +16,7 @@ import dataclasses
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -30,6 +31,8 @@ from cheiron.domain.analysis import (
     Distribution,
     Entity,
     Measure,
+    ResultFocus,
+    TrialResults,
 )
 from cheiron.domain.trial import Phase, Status, StudyType
 from cheiron.domain.trial_filter import TrialFilter
@@ -85,13 +88,34 @@ class CohortDraft(_Draft):
     filter: FilterDraft
 
 
+class Refusal(StrEnum):
+    """Why a question gets no chart. The planner only picks one; the words shown are fixed below."""
+
+    MEDICAL_ADVICE = "medical_advice"
+    NOT_ABOUT_TRIALS = "not_about_trials"
+    UNAVAILABLE_DATA = "unavailable_data"
+    OTHER = "other"
+
+
+REFUSAL_MESSAGES = {
+    Refusal.MEDICAL_ADVICE: "Cheiron describes registered clinical trials and cannot give medical advice; "
+    "please ask a healthcare professional.",
+    Refusal.NOT_ABOUT_TRIALS: "Cheiron answers questions about clinical trials registered on ClinicalTrials.gov.",
+    Refusal.UNAVAILABLE_DATA: "Cheiron cannot chart this. It charts registration data across groups of trials "
+    "(counts, trends, comparisons, sponsors, locations, enrollment) and a named trial's posted results "
+    "(outcome measures and adverse events).",
+    Refusal.OTHER: "This question could not be turned into a chart. Try asking about trial counts, trends, "
+    "comparisons or networks, or about a named trial's posted results.",
+}
+
+
 class PlanDraft(_Draft):
     interpretation: str = Field(
         description="One sentence describing the planned analysis and its filters, for the user to check."
     )
-    answerable: bool = Field(description="False if no analysis below can answer the question from registry data.")
-    unsupported_reason: str | None = Field(description="Why the question cannot be answered; null if answerable.")
-    kind: Literal["count_by", "co_occurrence", "distribution", "correlation"] | None
+    answerable: bool = Field(description="False if no analysis below can answer the question.")
+    refusal: Refusal | None = Field(description="Why not, when answerable is false; null otherwise.")
+    kind: Literal["count_by", "co_occurrence", "distribution", "correlation", "trial_results"] | None
     cohorts: list[CohortDraft] = Field(description="One cohort, or one per compared group (count_by only, up to 5).")
     dimension: Dimension | None = Field(description="count_by: what to count trials by; start_year for trends.")
     split_by: Dimension | None = Field(description="count_by with one cohort: optional second dimension.")
@@ -101,6 +125,15 @@ class PlanDraft(_Draft):
     measure: Measure | None = Field(description="distribution: the numeric attribute to histogram.")
     x: Measure | None = Field(description="correlation: horizontal measure.")
     y: Measure | None = Field(description="correlation: vertical measure.")
+    trial: TextFilter | None = Field(
+        description="trial_results: the one trial the question names (NCT ID, acronym or name), e.g. 'KEYNOTE-189'."
+    )
+    result_focus: ResultFocus | None = Field(
+        description="trial_results: outcomes (efficacy, response, survival) or adverse_events (safety)."
+    )
+    outcome: TextFilter | None = Field(
+        description="trial_results: a specific outcome the question names, e.g. 'overall survival'; null for the primary outcomes."
+    )
 
 
 # --- The question ----------------------------------------------------------------------------
@@ -118,6 +151,8 @@ class StructuredFields:
     statuses: frozenset[Status] = frozenset()
     start_year: int | None = None
     end_year: int | None = None
+    nct_id: str | None = None
+    """For a single trial's results: the trial to use, overriding the one the planner found by name."""
 
     def described(self) -> dict[str, object]:
         return {
@@ -144,10 +179,10 @@ class GroundedPlan:
 
 
 class UnsupportedQuestion(Exception):
-    def __init__(self, reason: str, interpretation: str) -> None:
-        super().__init__(reason)
+    def __init__(self, reason: Refusal) -> None:
+        super().__init__(REFUSAL_MESSAGES[reason])
         self.reason = reason
-        self.interpretation = interpretation
+        self.message = REFUSAL_MESSAGES[reason]
 
 
 class DraftRejected(Exception):
@@ -177,13 +212,15 @@ def ground(draft: PlanDraft, question: Question, *, drop_unquoted: bool = False)
     `drop_unquoted` (the last attempt) is dropped and reported in the notes.
     """
     if not draft.answerable:
-        raise UnsupportedQuestion(draft.unsupported_reason or "The question cannot be answered.", draft.interpretation)
+        raise UnsupportedQuestion(draft.refusal or Refusal.OTHER)
 
     problems: list[str] = []
     notes: list[str] = []
     text = _fold(question.text)
     structured = {f: getattr(question.fields, s) for f, s in _STRUCTURED.items()}
     given = {f for f, v in structured.items() if v not in (None, frozenset())}
+    if draft.kind == "trial_results":
+        return _ground_trial_results(draft, question, text, given, drop_unquoted)
 
     cohorts = []
     for number, cohort in enumerate(draft.cohorts, start=1):
@@ -235,6 +272,42 @@ def ground(draft: PlanDraft, question: Question, *, drop_unquoted: bool = False)
     plan = None if problems else _build(draft, tuple(cohorts), problems)
     if problems or plan is None:
         raise DraftRejected(problems)
+    return GroundedPlan(plan, draft.interpretation, tuple(notes))
+
+
+def _ground_trial_results(
+    draft: PlanDraft, question: Question, text: str, given: set[str], drop_unquoted: bool
+) -> GroundedPlan:
+    problems: list[str] = []
+    notes: list[str] = []
+    trial = question.fields.nct_id
+    if trial:
+        notes.append(f"Using the requested trial {trial}.")
+    elif draft.trial is None:
+        problems.append("trial_results needs the trial the question names.")
+    elif _fold(draft.trial.quote) not in text or _fold(draft.trial.value) not in _fold(draft.trial.quote):
+        problems.append(
+            f"The trial '{draft.trial.value}' must be named in the question: quote its exact words "
+            f"(quote given: '{draft.trial.quote}')."
+        )
+    else:
+        trial = draft.trial.value
+
+    outcome = None
+    if draft.outcome is not None:
+        if _fold(draft.outcome.quote) in text and _fold(draft.outcome.value) in _fold(draft.outcome.quote):
+            outcome = draft.outcome.value
+        elif drop_unquoted:
+            notes.append(f"Ignored the outcome '{draft.outcome.value}': it is not named in the question.")
+        else:
+            problems.append(f"The outcome '{draft.outcome.value}' must be words from the question, or null.")
+
+    if given:
+        ignored = ", ".join(_STRUCTURED[name] for name in sorted(given))
+        notes.append(f"The request's filters ({ignored}) do not apply to one trial's posted results and were ignored.")
+    if problems:
+        raise DraftRejected(problems)
+    plan = TrialResults(trial, draft.result_focus or ResultFocus.OUTCOMES, outcome)
     return GroundedPlan(plan, draft.interpretation, tuple(notes))
 
 

@@ -14,6 +14,7 @@ export interface StructuredFields {
   statuses?: string[]
   start_year?: number
   end_year?: number
+  nct_id?: string
 }
 
 export const EXAMPLES: Example[] = [
@@ -29,4 +30,6 @@ export const EXAMPLES: Example[] = [
   { query: 'How large are phase 3 obesity trials?' },
   { query: 'Do longer phase 3 pembrolizumab trials enroll more patients?' },
   { query: 'What were the results of the KEYNOTE-189 trial?' },
+  { query: 'What serious adverse events were reported in CheckMate 227?' },
+  { query: 'Should I take metformin for weight loss?' },
 ]

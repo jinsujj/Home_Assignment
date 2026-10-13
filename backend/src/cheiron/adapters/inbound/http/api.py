@@ -10,14 +10,16 @@ from fastapi.responses import JSONResponse
 from cheiron.adapters.inbound.http.schemas import PlanRequest, VisualizationResponse, VisualizeRequest, plan_from_domain
 from cheiron.application.options import SearchOptions, SearchOptionsProvider
 from cheiron.application.planning import UnsupportedQuestion
-from cheiron.application.ports import PlannerError, QueryPlanner, TrialSource, TrialSourceError
+from cheiron.application.ports import PlannerError, QueryPlanner, Registry, TrialSourceError
 from cheiron.application.run_plan import run_plan
+from cheiron.application.trial_lookup import NoPostedResults, TrialNotFound
 from cheiron.application.visualize import PlanningFailed, visualize
+from cheiron.domain.visualization import STUDY_URL
 
 router = APIRouter(prefix="/api")
 
 
-def trial_source(request: Request) -> TrialSource:
+def trial_source(request: Request) -> Registry:
     return request.app.state.trial_source
 
 
@@ -60,7 +62,7 @@ async def search_options(provider: Annotated[SearchOptionsProvider, Depends(opti
 )
 async def visualize_question(
     body: VisualizeRequest,
-    source: Annotated[TrialSource, Depends(trial_source)],
+    source: Annotated[Registry, Depends(trial_source)],
     planner: Annotated[QueryPlanner, Depends(query_planner)],
 ) -> VisualizationResponse:
     answer = await visualize(body.to_question(), planner, source, body.max_trials_per_cohort)
@@ -81,7 +83,7 @@ async def visualize_question(
     responses={502: {"description": "ClinicalTrials.gov rejected the query or is unavailable."}},
 )
 async def run_structured_plan(
-    body: PlanRequest, source: Annotated[TrialSource, Depends(trial_source)]
+    body: PlanRequest, source: Annotated[Registry, Depends(trial_source)]
 ) -> VisualizationResponse:
     result = await run_plan(body.plan.to_domain(), source, body.max_trials_per_cohort)
     return VisualizationResponse.of(body.plan, result)
@@ -109,7 +111,24 @@ def create_app(lifespan: Callable[[FastAPI], AbstractAsyncContextManager[None]] 
 
     @app.exception_handler(UnsupportedQuestion)
     async def unsupported(_: Request, exc: UnsupportedQuestion) -> JSONResponse:
-        detail = {"code": "unsupported_question", "message": exc.reason, "interpretation": exc.interpretation}
+        detail = {"code": "unsupported_question", "reason": exc.reason, "message": exc.message}
+        return JSONResponse(status_code=422, content={"detail": detail})
+
+    @app.exception_handler(TrialNotFound)
+    async def trial_not_found(_: Request, exc: TrialNotFound) -> JSONResponse:
+        detail = {
+            "code": "trial_not_found",
+            "message": f"No trial registered as '{exc.name}' was found on ClinicalTrials.gov; try its NCT ID.",
+        }
+        return JSONResponse(status_code=422, content={"detail": detail})
+
+    @app.exception_handler(NoPostedResults)
+    async def no_results(_: Request, exc: NoPostedResults) -> JSONResponse:
+        detail = {
+            "code": "no_posted_results",
+            "message": f"{exc.nct_id}{f' ({exc.title})' if exc.title else ''} has not posted results on ClinicalTrials.gov.",
+            "trial": {"nct_id": exc.nct_id, "url": STUDY_URL.format(nct_id=exc.nct_id)},
+        }
         return JSONResponse(status_code=422, content={"detail": detail})
 
     @app.exception_handler(PlanningFailed)
