@@ -59,7 +59,7 @@ cd frontend && npm install && npm run dev       # UI on :5173, proxies /api to :
 cd backend
 uv run pytest            # offline: unit tests, recorded API fixtures, HTTP tests with a fake source
 uv run pytest -m live    # contract checks and cross-checks against the real ClinicalTrials.gov API
-uv run --env-file ../.env pytest -m llm   # planner evaluation against the real model (17 cases)
+uv run --env-file ../.env pytest -m llm   # planner evaluation against the real model (19 cases)
 cd ../frontend && npm run build && npm run lint   # type-check, build, lint
 ```
 
@@ -615,7 +615,7 @@ _To be completed by the author._ So far:
 - **End to end in a browser:** every example in the demo was run against the live API through
   the React UI, including clicking data to inspect citations; this is how the histogram
   rendering bug and the cramped network layout were found and fixed.
-- **Planner evaluation:** `pytest -m llm` runs 17 cases against the real model and asserts the
+- **Planner evaluation:** `pytest -m llm` runs 19 cases against the real model and asserts the
   plan kind, its parameters and the exact filters (so an added filter fails), plus refusals;
   results per model are in [AI design](#ai-design-grounding-the-planner-in-the-question).
   Offline tests cover grounding rules, the correction round, the OpenAI adapter (request shape and

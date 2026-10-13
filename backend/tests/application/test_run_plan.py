@@ -78,7 +78,7 @@ async def test_sites_are_fetched_only_for_plans_that_use_them() -> None:
 
 async def test_country_filters_are_explained() -> None:
     korea = Cohort("Pembrolizumab", TrialFilter(intervention="pembrolizumab", country="South Korea"))
-    source = FakeSource({korea.filter: TrialSearchResult((), total_count=0)})
+    source = FakeSource({korea.filter: TrialSearchResult((trial("NCT1", phases=(Phase.PHASE2,)),), total_count=1)})
 
     result = await run_plan(CountBy((korea,), Dimension.PHASE), source)
 
@@ -181,3 +181,11 @@ async def test_answers_name_their_data_snapshot_but_do_not_depend_on_it() -> Non
 
     assert (await run_plan(CountBy((A,), Dimension.PHASE), FakeSource(results))).data_version == SNAPSHOT
     assert (await run_plan(CountBy((A,), Dimension.PHASE), NoVersion(results))).data_version is None
+
+
+async def test_cohorts_without_any_match_are_named() -> None:
+    source = FakeSource({A.filter: TrialSearchResult((), total_count=0)})
+
+    result = await run_plan(CountBy((A,), Dimension.PHASE), source)
+
+    assert result.notes == ("No trials match the filters for A; check the spelling or try a broader term.",)

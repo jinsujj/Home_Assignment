@@ -50,3 +50,9 @@ def test_strips_essie_syntax_from_free_text() -> None:
 
 def test_skips_text_that_is_empty_after_cleaning() -> None:
     assert to_params(TrialFilter(condition='  ""  ', country="()")) == {}
+
+
+def test_typographic_quotes_become_plain_ones() -> None:
+    params = to_params(TrialFilter(condition="Alzheimer’s disease", sponsor="“Merck”"))
+
+    assert (params["query.cond"], params["query.spons"]) == ("Alzheimer's disease", "Merck")

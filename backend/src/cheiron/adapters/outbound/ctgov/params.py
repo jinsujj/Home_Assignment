@@ -13,6 +13,10 @@ from cheiron.domain.trial_filter import TrialFilter
 
 _ESSIE_SYNTAX = re.compile(r'["()\[\]\\]')
 
+# Phones and word processors type typographic quotes, which the registry does not match:
+# "Alzheimer's disease" finds 4,269 trials, "Alzheimer’s disease" none.
+_TYPOGRAPHIC_QUOTES = str.maketrans({"’": "'", "‘": "'", "“": '"', "”": '"'})
+
 # Search areas whose values are the domain's category keys. Verified live: for all 4,269
 # Alzheimer's disease trials, the registry's count of every category (38 in all) equals
 # our own aggregation.
@@ -65,7 +69,7 @@ def category_params(criteria: TrialFilter, dimension: Dimension, key: str) -> di
 
 def essie_phrase(text: str) -> str:
     """Free text made safe to place inside an Essie expression."""
-    return " ".join(_ESSIE_SYNTAX.sub(" ", text).split())
+    return " ".join(_ESSIE_SYNTAX.sub(" ", text.translate(_TYPOGRAPHIC_QUOTES)).split())
 
 
 _clean = essie_phrase

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ApiError, askQuestion, getOptions, getVersion, runPlan } from './api/client'
-import type { SearchOptions, Selection, View, Visualization, VisualizationResponse } from './api/types'
+import type { NetworkData, SearchOptions, Selection, View, Visualization, VisualizationResponse } from './api/types'
 import { CitationPanel } from './components/CitationPanel'
 import { Composer } from './components/Composer'
 import { MetaPanel } from './components/MetaPanel'
@@ -43,6 +43,9 @@ function viewLabel(view: Visualization, index: number, answer: Visualization): s
   if (index > 0 && view.type === 'bar_chart') return answer.type === 'scatter_plot' ? 'Medians' : 'Top links'
   return VIEW_LABELS[view.type] ?? view.type
 }
+
+const isEmpty = (viz: Visualization) =>
+  Array.isArray(viz.data) ? viz.data.length === 0 : (viz.data as NetworkData).nodes.length === 0
 
 export default function App() {
   // A reload shows the last answer of this session instead of asking again.
@@ -331,7 +334,9 @@ export default function App() {
                     ))}
                   </div>
                 )}
-                {viz.type === 'network_graph' ? (
+                {isEmpty(viz) ? (
+                  <p className="notice">Nothing to chart for this question; the notes under Meta say why.</p>
+                ) : viz.type === 'network_graph' ? (
                   <NetworkGraph visualization={viz} onSelect={setSelection} />
                 ) : (
                   <VegaChart visualization={viz} onSelect={setSelection} />

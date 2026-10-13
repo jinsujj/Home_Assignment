@@ -88,6 +88,12 @@ async def run_plan(
         for r in reports
         if r.truncated
     )
+    notes += tuple(
+        f"No trials match the filters{f' for {r.label}' if r.label else ''}; "
+        "check the spelling or try a broader term."
+        for r in reports
+        if not r.matched
+    )
     if any(c.filter.country for c in cohorts):
         notes += (
             "A country filter keeps trials with at least one site in that country, "
