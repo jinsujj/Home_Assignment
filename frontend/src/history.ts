@@ -1,7 +1,7 @@
 // Answers already given in this session, so asking again shows them instantly (as chat
 // assistants do) instead of planning and querying again.
 
-import type { VisualizationResponse } from './api/types'
+import type { Conversation, VisualizationResponse, WrittenAnswer } from './api/types'
 import type { StructuredFields } from './presets'
 
 export interface Entry {
@@ -13,6 +13,10 @@ export interface Entry {
   notice?: string
   /** The registry data snapshot behind the answer; once the service serves another, it is asked again. */
   dataVersion?: string | null
+  /** For a follow-up: the conversation it refined. */
+  context?: Conversation | null
+  /** The answer in words, once written. */
+  answer?: WrittenAnswer
 }
 
 // Raise the version whenever the response format changes: answers stored in the old format
@@ -20,13 +24,14 @@ export interface Entry {
 const STORAGE_KEY = 'cheiron.history.v2'
 const MAX_ENTRIES = 20
 
-/** The same question: same words (ignoring case, spacing and a trailing "?") and same filters. */
-export function entryKey(query: string, fields: StructuredFields): string {
+/** The same question: same words (ignoring case, spacing and a trailing "?"), same filters and,
+ * for a follow-up, the same conversation. */
+export function entryKey(query: string, fields: StructuredFields, context?: Conversation | null): string {
   const text = query.toLowerCase().split(/\s+/).filter(Boolean).join(' ').replace(/[\s?]+$/, '')
   const filters = Object.entries(fields)
     .map(([name, value]) => [name, Array.isArray(value) ? [...value].sort() : value])
     .sort(([a], [b]) => String(a).localeCompare(String(b)))
-  return JSON.stringify([text, filters])
+  return JSON.stringify(context ? [text, filters, context.questions, context.plan] : [text, filters])
 }
 
 export function remember(entries: Entry[], entry: Entry): Entry[] {

@@ -6,6 +6,7 @@ from enum import StrEnum
 from typing import Literal, Protocol
 
 from cheiron.application.planning import PlanDraft, Question
+from cheiron.application.writing import AnswerContext, AnswerDraft
 from cheiron.domain.analysis import Dimension
 from cheiron.domain.membership import MentionRole
 from cheiron.domain.results import PostedResults
@@ -103,6 +104,16 @@ class MentionJudgeError(Exception):
 class MentionJudge(Protocol):
     async def judge(self, cases: Sequence[MentionCase]) -> dict[str, tuple[MentionRole, str]]:
         """Per NCT ID: the entity's role in the trial and the words quoted from the case's passages."""
+        ...
+
+
+class AnswerWriterError(Exception):
+    """The language model could not write an answer."""
+
+
+class AnswerWriter(Protocol):
+    async def write(self, context: AnswerContext) -> AnswerDraft:
+        """Sentences answering the question from the context's items, and follow-up questions."""
         ...
 
 

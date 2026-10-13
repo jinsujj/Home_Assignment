@@ -20,7 +20,9 @@ from datetime import date
 from typing import Any
 
 from cheiron.application.planning import PlanDraft, Question
+from cheiron.application.writing import AnswerContext, AnswerDraft
 from cheiron.application.ports import (
+    AnswerWriter,
     MentionCase,
     MentionJudge,
     QueryPlanner,
@@ -205,3 +207,22 @@ class CachingMentionJudge:
             while len(self._verdicts) > self._max:
                 self._verdicts.popitem(last=False)
         return {c.nct_id: self._verdicts[c] for c in cases if c in self._verdicts}
+
+
+class CachingAnswerWriter:
+    """AnswerWriter decorator: the same question over the same data is written once."""
+
+    def __init__(self, inner: AnswerWriter, max_answers: int = 256) -> None:
+        self._inner = inner
+        self._max = max_answers
+        self._answers: OrderedDict[AnswerContext, AnswerDraft] = OrderedDict()
+
+    async def write(self, context: AnswerContext) -> AnswerDraft:
+        if context in self._answers:
+            self._answers.move_to_end(context)
+            return self._answers[context]
+        answer = await self._inner.write(context)
+        self._answers[context] = answer
+        if len(self._answers) > self._max:
+            self._answers.popitem(last=False)
+        return answer

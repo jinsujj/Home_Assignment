@@ -9,6 +9,10 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 
 from cheiron.adapters.inbound.http.schemas import (
+    AnswersRequest,
+    AnswersResponse,
+    FollowUpOut,
+    SentenceOut,
     MentionsRequest,
     MentionsResponse,
     MentionVerdictOut,
@@ -19,8 +23,18 @@ from cheiron.adapters.inbound.http.schemas import (
 )
 from cheiron.application.options import SearchOptions, SearchOptionsProvider
 from cheiron.application.planning import UnsupportedQuestion
+from cheiron.application.answers import write_answer
 from cheiron.application.mentions import explain_mentions
-from cheiron.application.ports import MentionJudge, MentionJudgeError, PlannerError, QueryPlanner, Registry, TrialSourceError
+from cheiron.application.ports import (
+    AnswerWriter,
+    AnswerWriterError,
+    MentionJudge,
+    MentionJudgeError,
+    PlannerError,
+    QueryPlanner,
+    Registry,
+    TrialSourceError,
+)
 from cheiron.application.run_plan import run_plan
 from cheiron.application.trial_lookup import NoPostedResults, TrialNotFound
 from cheiron.application.visualize import PlanningFailed, visualize
@@ -45,6 +59,13 @@ def mention_judge(request: Request) -> MentionJudge:
     if judge is None:
         raise HTTPException(503, "Judging mentions needs OPENAI_API_KEY.")
     return judge
+
+
+def answer_writer(request: Request) -> AnswerWriter:
+    writer = getattr(request.app.state, "answer_writer", None)
+    if writer is None:
+        raise HTTPException(503, "Written answers need OPENAI_API_KEY.")
+    return writer
 
 
 def options_provider(request: Request) -> SearchOptionsProvider:
@@ -122,6 +143,40 @@ async def run_structured_plan(
 
 
 @router.post(
+    "/answers",
+    summary="Answer a question in words, with follow-up questions",
+    description="After /api/visualize: the same question, structured fields and `context`, plus the plan that "
+    "answered it (`meta.plan`). A language model writes one to three sentences from the computed data, citing "
+    "the data each draws on; a sentence with a number not found there is dropped. Its follow-up questions are "
+    "planned as follow-ups first, and only those that plan are returned.",
+    responses={503: {"description": "The language model is not configured or unavailable."}},
+)
+async def answer_in_words(
+    body: AnswersRequest,
+    source: Annotated[Registry, Depends(trial_source)],
+    planner: Annotated[QueryPlanner, Depends(query_planner)],
+    writer: Annotated[AnswerWriter, Depends(answer_writer)],
+) -> AnswersResponse:
+    answer = await write_answer(
+        body.to_question(),
+        body.plan.to_domain(),
+        body.plan.model_dump_json(exclude_none=True),
+        writer,
+        planner,
+        source,
+        body.max_trials_per_cohort,
+    )
+    return AnswersResponse(
+        sentences=[SentenceOut(text=s.text, refs=list(s.refs)) for s in answer.sentences],
+        dropped=answer.dropped,
+        follow_ups=[
+            FollowUpOut(query=f.query, interpretation=f.interpretation, plan=plan_from_domain(f.plan))
+            for f in answer.follow_ups
+        ],
+    )
+
+
+@router.post(
     "/mentions",
     summary="Judge why trials mention a filtered entity",
     description="For trials whose citations list a term under `mentioned_only` (or any others), a language model "
@@ -161,6 +216,10 @@ def create_app(lifespan: Callable[[FastAPI], AbstractAsyncContextManager[None]] 
 
     @app.exception_handler(PlannerError)
     async def planner_failed(_: Request, exc: PlannerError) -> JSONResponse:
+        return JSONResponse(status_code=503, content={"detail": str(exc)})
+
+    @app.exception_handler(AnswerWriterError)
+    async def writer_failed(_: Request, exc: AnswerWriterError) -> JSONResponse:
         return JSONResponse(status_code=503, content={"detail": str(exc)})
 
     @app.exception_handler(MentionJudgeError)

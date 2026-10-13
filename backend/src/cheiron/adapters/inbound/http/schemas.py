@@ -479,3 +479,32 @@ class MentionsResponse(BaseModel):
     note: str = Field(
         "Roles are a language model's reading of the quoted passages; each quote was found in the trial's record."
     )
+
+
+class AnswersRequest(VisualizeRequest):
+    """The question as it was asked, with the plan that answered it."""
+
+    plan: PlanIn = Field(description="The plan that answered `query`: its response's `meta.plan`.")
+
+
+class SentenceOut(BaseModel):
+    text: str
+    refs: list[str] = Field(
+        description="JSON pointers into the /api/visualize response to the data the sentence cites, e.g. "
+        "'#/visualization/data/3' (whose `citations` list its trials) or '#/meta/cohorts/0'."
+    )
+
+
+class FollowUpOut(BaseModel):
+    query: str = Field(description="Ask it as a follow-up: `context` = this question and its plan.")
+    interpretation: str
+    plan: AnyPlanIn
+
+
+class AnswersResponse(BaseModel):
+    sentences: list[SentenceOut]
+    dropped: int = Field(description="Sentences left out because a number in them was not in the data they cite.")
+    follow_ups: list[FollowUpOut] = Field(description="Follow-up questions already planned, so each will chart.")
+    note: str = Field(
+        "Written by a language model from the computed data; every number in a sentence was found in the data it cites."
+    )

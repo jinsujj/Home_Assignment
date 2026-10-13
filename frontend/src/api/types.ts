@@ -176,3 +176,21 @@ export interface SearchOptions {
   phases: Choice[]
   statuses: Choice[]
 }
+
+/** What a follow-up question refines: POST /api/visualize `context`. */
+export interface Conversation {
+  /** Earlier questions, oldest first (at most 5). */
+  questions: string[]
+  /** The plan that answered the last of them (its response's meta.plan). */
+  plan: unknown
+}
+
+/** POST /api/answers: the question answered in words, and follow-ups already planned. */
+export interface WrittenAnswer {
+  /** Every number in a sentence was found in the data it cites; refs are JSON pointers into the response. */
+  sentences: { text: string; refs: string[] }[]
+  /** Sentences left out because a number in them was not in the data they cite. */
+  dropped: number
+  follow_ups: { query: string; interpretation: string; plan: unknown }[]
+  note: string
+}

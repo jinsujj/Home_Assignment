@@ -23,10 +23,23 @@ interface Props {
   options: SearchOptions | null
   loading: boolean
   onAsk: () => void
+  /** The question the next one follows up on; null for a new question. */
+  followingUp: string | null
+  onStopFollowingUp: () => void
 }
 
 /** The question box at the bottom of the page, with its filters. */
-export function Composer({ query, onQueryChange, fields, onFieldsChange, options, loading, onAsk }: Props) {
+export function Composer({
+  query,
+  onQueryChange,
+  fields,
+  onFieldsChange,
+  options,
+  loading,
+  onAsk,
+  followingUp,
+  onStopFollowingUp,
+}: Props) {
   const [showFilters, setShowFilters] = useState(false)
   const active = Object.keys(fields) as (keyof StructuredFields)[]
   const codeLabel = (code: string) =>
@@ -54,8 +67,16 @@ export function Composer({ query, onQueryChange, fields, onFieldsChange, options
           <FilterFields value={fields} onChange={onFieldsChange} options={options} />
         </div>
       )}
-      {active.length > 0 && (
+      {(followingUp || active.length > 0) && (
         <div className="active-filters">
+          {followingUp && (
+            <span className="chip follow-up-chip">
+              <span>{`Follows up on “${followingUp.length > 60 ? `${followingUp.slice(0, 57)}…` : followingUp}”`}</span>
+              <button type="button" aria-label="Ask a new question instead" title="Ask a new question instead" onClick={onStopFollowingUp}>
+                ×
+              </button>
+            </span>
+          )}
           {active.map((key) => (
             <span key={key} className="chip on">
               <span>{`${NAMES[key]}: ${shown(key)}`}</span>

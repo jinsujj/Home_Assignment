@@ -5,6 +5,7 @@ from cheiron.adapters.inbound.http.api import create_app
 from cheiron.application.options import SearchOptionsProvider
 from cheiron.application.planning import REFUSAL_MESSAGES, Refusal
 from cheiron.application.ports import PlannerError, TrialCandidate, TrialSearchResult, TrialSourceError
+from cheiron.application.writing import AnswerDraft
 from cheiron.domain.results import GroupValue, Outcome, OutcomeType, PostedResults
 from cheiron.domain.trial import InterventionType, Phase
 from cheiron.domain.trial_filter import TrialFilter
@@ -537,3 +538,46 @@ async def test_a_follow_up_sends_the_conversation_to_the_planner_and_reports_kep
     assert question.earlier == ("Breast cancer trials by phase?",)
     assert '"condition":"breast cancer"' in question.previous_plan
     assert "Kept the condition filter 'breast cancer' on the cohort from an earlier question." in response.json()["meta"]["notes"]
+
+
+
+class FixedWriter:
+    async def write(self, context):
+        return AnswerDraft(
+            sentences=[
+                {"text": "Phase 3 has 1 trial.", "refs": ["r0"]},
+                {"text": "That is 50% of them.", "refs": ["r0"]},  # a computed number: dropped
+            ],
+            follow_ups=["Only recruiting ones"],
+        )
+
+
+async def test_answers_write_verified_sentences_and_planned_follow_ups() -> None:
+    recruiting = draft(
+        interpretation="Recruiting trials by phase.",
+        cohorts=[cohort(intervention=text("pembrolizumab"), statuses={"values": ["RECRUITING"], "quote": "recruiting"})],
+    )
+    app = create_app()
+    app.state.trial_source = FakeSource([trial("NCT1", phases=(Phase.PHASE3,))])
+    app.state.planner, app.state.answer_writer = ScriptedPlanner(recruiting), FixedWriter()
+    plan = {"kind": "count_by", "cohorts": [{"label": "", "filter": {"intervention": "pembrolizumab"}}], "dimension": "phase"}
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/api/answers", json={"query": "Pembrolizumab trials by phase?", "plan": plan})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["sentences"] == [{"text": "Phase 3 has 1 trial.", "refs": ["#/visualization/data/0"]}]
+    assert body["dropped"] == 1
+    [follow_up] = body["follow_ups"]
+    assert (follow_up["query"], follow_up["plan"]["cohorts"][0]["filter"]["statuses"]) == ("Only recruiting ones", ["RECRUITING"])
+    [asked] = app.state.planner.questions
+    assert asked.earlier == ("Pembrolizumab trials by phase?",) and '"intervention":"pembrolizumab"' in asked.previous_plan
+
+
+async def test_answers_need_the_language_model() -> None:
+    plan = {"kind": "count_by", "cohorts": [{"label": "", "filter": {"intervention": "a"}}], "dimension": "phase"}
+    async with client_with_planner(FakeSource(), ScriptedPlanner()) as client:
+        response = await client.post("/api/answers", json={"query": "q", "plan": plan})
+
+    assert response.status_code == 503

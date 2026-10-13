@@ -2,7 +2,8 @@ from datetime import date
 
 import pytest
 
-from cheiron.adapters.outbound.caching import CachingMentionJudge, CachingPlanner, CachingTrialSource
+from cheiron.adapters.outbound.caching import CachingAnswerWriter, CachingMentionJudge, CachingPlanner, CachingTrialSource
+from cheiron.application.writing import AnswerContext, AnswerDraft, Item
 from cheiron.application.planning import Question, StructuredFields
 from cheiron.application.ports import MentionCase, PlannerError, TrialSearchResult, TrialSourceError
 from cheiron.domain.analysis import Dimension
@@ -338,3 +339,24 @@ async def test_a_follow_up_is_planned_apart_from_the_same_words_asked_alone() ->
     await planner.draft(Question("Only recruiting ones", earlier=("Lung cancer trials by phase",), previous_plan="{}"))
 
     assert len(inner.calls) == 3
+
+
+async def test_the_same_question_over_the_same_data_is_written_once() -> None:
+    class Writer:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def write(self, context):
+            self.calls += 1
+            return AnswerDraft(sentences=[], follow_ups=[])
+
+    inner = Writer()
+    writer = CachingAnswerWriter(inner)
+    context = AnswerContext("q", "bar_chart: t", (Item("r0", "#/visualization/data/0", (("trial_count", 3),)),))
+    other = AnswerContext("q", "bar_chart: t", (Item("r0", "#/visualization/data/0", (("trial_count", 4),)),))
+
+    first = await writer.write(context)
+    assert await writer.write(context) is first
+    await writer.write(other)  # new data, new answer
+
+    assert inner.calls == 2

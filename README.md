@@ -31,8 +31,8 @@ cp .env.example .env   # then set OPENAI_API_KEY
 
 | Variable | Required | Used for |
 |---|---|---|
-| `OPENAI_API_KEY` | for `/api/visualize`, `/api/mentions` | the LLM planner and mention judge; `/api/plans` works without it |
-| `OPENAI_MODEL` | no | planner model, default `gpt-5.4-mini` |
+| `OPENAI_API_KEY` | for `/api/visualize`, `/api/answers`, `/api/mentions` | the LLM planner, answer writer and mention judge; `/api/plans` works without it |
+| `OPENAI_MODEL` | no | planner, answer-writer and mention-judge model, default `gpt-5.4-mini` |
 | `OPENAI_REASONING_EFFORT` | no | default `low`; set empty for non-reasoning models such as `gpt-4.1-mini` |
 | `OPENAI_MENTION_REASONING_EFFORT` | no | the same for the mention judge, default `high` |
 
@@ -63,7 +63,7 @@ cd frontend && npm install && npm run dev       # UI on :5173, proxies /api to :
 cd backend
 uv run pytest            # offline: unit tests, recorded API fixtures, HTTP tests with a fake source
 uv run pytest -m live    # contract checks and cross-checks against the real ClinicalTrials.gov API
-uv run --env-file ../.env pytest -m llm   # planner (21 cases) and mention judge (13) against the real model
+uv run --env-file ../.env pytest -m llm   # planner (26 cases), answer writer (5 questions) and mention judge (13)
 cd ../frontend && npm run build && npm run lint   # type-check, build, lint
 ```
 
@@ -71,7 +71,8 @@ cd ../frontend && npm run build && npm run lint   # type-check, build, lint
 
 | Endpoint | Purpose |
 |---|---|
-| `POST /api/visualize` | Question (+ optional structured fields) → plan → visualization. |
+| `POST /api/visualize` | Question (+ optional structured fields, + `context` for a follow-up) → plan → visualization. |
+| `POST /api/answers` | The same request plus the `plan` that answered it → the answer in one to three sentences, each citing the data it draws on (every number checked against that data), and follow-up questions already planned. See [An answer in words, and what to ask next](#ai-design-an-answer-in-words-and-what-to-ask-next). |
 | `POST /api/plans` | Run a structured analysis plan directly, without the LLM. |
 | `GET /api/options` | Choices for building filters: every registry country (exact spelling, trial count), common conditions/interventions/sponsors as suggestions, phase and status codes. Cached 6 h. |
 | `GET /api/version` | `{"data_version": "2026-10-09T09:00:05"}`: the registry data snapshot being served (ClinicalTrials.gov's `/version` `dataTimestamp`, checked at most every 10 minutes). |
@@ -93,6 +94,7 @@ cd ../frontend && npm run build && npm run lint   # type-check, build, lint
 | `phases`, `statuses` | list of registry codes (`PHASE3`, `RECRUITING`, …) | optional; any of |
 | `start_year`, `end_year` | integer 1900–2100 | optional; trials starting in `[start_year, end_year]`; start ≤ end |
 | `nct_id` | `NCT` + 8 digits | optional; for a single trial's results, use this trial (e.g. an alternative listed in `meta.trial`) |
+| `context` | `{"questions": [...], "plan": {...}}` | optional; for a follow-up ("only recruiting ones"): the earlier questions (1–5, oldest first) and the `meta.plan` that answered the last |
 | `max_trials_per_cohort` | integer 1–10,000 | default 5,000 |
 | `all_citation_ids` | boolean | default `false`; list every contributing NCT ID per datum in `citations.nct_ids` |
 
@@ -337,7 +339,7 @@ asserts the exact filters, so an added filter fails it, and refusals assert thei
 
 | Model | Result | Planner latency |
 |---|---|---|
-| `gpt-5.4-mini`, reasoning `low` (default) | 17/17 twice on the first suite; 21/21 three times on the current one | ~1.5–2.2 s |
+| `gpt-5.4-mini`, reasoning `low` (default) | 17/17 twice on the first suite; 21/21 three times; 26/26 with the follow-up cases | ~1.5–2.2 s |
 | `gpt-4.1-mini` | 16/17 on the first suite (Keytruda vs Opdivo failed once, passed 3/3 on rerun) | ~1.8–4.8 s |
 
 ### AI design: why a trial mentions a term
@@ -373,6 +375,46 @@ fitted drugs, so every breast cancer trial came back `background`. After fixing 
 Higher effort did not help: the misses are borderline readings (an observational study of
 patients "scheduled to receive" the drug), and it quoted titles and labels more often. `high`
 is the configured default by choice; `low` is as accurate here and several times faster.
+
+### AI design: an answer in words, and what to ask next
+
+A chart still leaves the reading to the user, and changing one filter meant retyping the
+question. Three additions, all on the same rule as the planner: the LLM decides, code checks.
+
+**Follow-ups.** `/api/visualize` takes an optional `context`: the earlier questions and the plan
+that answered the last one. The planner edits that plan ("only recruiting ones", "by country
+instead", "compare with lung cancer"), and grounding accepts a quote from an earlier question,
+checking each question on its own so a quote cannot span two; every filter kept that way is
+reported ("Kept the condition filter 'breast cancer' on the cohort from an earlier question").
+The server keeps no conversation state; the client sends it. Five eval cases cover narrowing,
+regrouping, comparing and a new topic that must keep nothing; the first version failed "Only
+recruiting trials in the United States", planned as a new topic without the condition, until the
+instructions said that a question naming only what changes refines the plan.
+
+**An answer in words.** After the chart arrives, the client sends the same request plus its
+`meta.plan` to `/api/answers`, so the chart is never delayed by it. The server runs the plan again
+(from cache), lists its data as items (`c0` a cohort, `r3` a row, `n2`/`e5` a node or link, `t1` a
+note), and an LLM writes one to three sentences, citing the items each draws on. `check` then
+keeps a sentence only if every number in it appears in the items it cites (or in the question or
+chart title): rounding, sums, percentages and approximations are dropped. Kept sentences carry
+JSON pointers to the data they cite (`#/visualization/data/3`), the same scheme as alternative
+views' references, so the demo's "sources" open that bar's citations: question → sentence →
+bar → trial → excerpt. Comparisons in words are the model's reading; numbers are not.
+
+That gap showed in testing: "most in Phase 2 at 4,590, then Not applicable at 4,962" passed the
+number check yet misread the ranking, because rows come in phase order. Each row now carries its
+rank by trials within its cohort, and three reruns of that question ordered the phases correctly.
+Over the last 15 answers (five questions of different chart types, three runs), every answer kept
+at least one sentence and 4 sentences were dropped, each for a number not in its data (e.g.
+"mid-200s"). The answer arrives 7–15 s after the chart on first ask and is stored with the
+answer in Recent, so reopening it makes no LLM call.
+
+**What to ask next.** The same LLM call suggests up to three follow-ups, each naming only what
+changes. Each is planned as a follow-up before it is offered, in parallel, and only those that
+plan to a different analysis are shown; the planner caches them, so choosing one skips planning
+(3 s to the chart in the demo, the data fetch). For a single trial's results, cohort-style
+suggestions ("by country instead") all failed to plan, so the writer is told to suggest the
+trial's other results instead ("Its serious adverse events").
 
 ### One grammar for every question: `AnalysisPlan`
 
@@ -650,6 +692,9 @@ removable chips. For a single trial it shows the trial used, with links, and let
 switch to another trial the name matched. Tabs above each chart switch between the answer's
 views (e.g. Bars / Map / Donut). Notes that count trials have a "show trials" link that lists
 them in the citation panel, and registry counts link to the API request that reproduces them.
+Above the chart, the question is answered in a few sentences whose "sources" open the data they
+cite, followed by planned follow-ups ("Ask next"); a chip over the question box shows when the
+next question follows up on the shown answer, and removing it starts a new topic.
 Beyond the five trials cited in full, "List the other trials" lists the rest by NCT ID, 20 at a
 time, and the "Ask AI" check reads whichever listed trials it has not judged yet (in requests of
 10, the endpoint's limit, sent together: 25 trials took 24 s). Refusals and "no posted results" appear as neutral notices, not
@@ -685,6 +730,9 @@ uv provisions the interpreter locally and the Docker image is `python:3.14-slim`
 
 ## Limitations and future improvements
 
+- Written answers check numbers, not words: "most" or "more than" is the model's reading of items
+  that state each row's rank. An answer costs one more LLM call (7–15 s after the chart, the
+  first time), and a follow-up carries at most the last 5 questions, which the client sends.
 - Results above the fetch cap are analyzed on the first N studies the API returns (unsorted);
   `meta` flags this. Counts by one dimension are completed from the registry up to 25,000
   matching trials (see above); networks, histograms, scatters and split bars are not, and a
@@ -934,7 +982,11 @@ _To be completed by the author._ So far:
 - **End to end in a browser:** every example in the demo was run against the live API through
   the React UI, including clicking data to inspect citations; this is how the histogram
   rendering bug and the cramped network layout were found and fixed.
-- **Planner evaluation:** `pytest -m llm` runs 21 planner cases against the real model and asserts the
+- **Answer evaluation:** `pytest -m llm -k answer` writes answers to five questions of different
+  chart types over live data and asserts that each keeps a checked sentence and a planned
+  follow-up; reading its output found the ranking error and the unplannable single-trial
+  suggestions described in [AI design](#ai-design-an-answer-in-words-and-what-to-ask-next).
+- **Planner evaluation:** `pytest -m llm` runs 26 planner cases (5 of them follow-ups) against the real model and asserts the
   plan kind, its parameters and the exact filters (so an added filter fails), plus refusals;
   results per model are in [AI design](#ai-design-grounding-the-planner-in-the-question).
   Offline tests cover grounding rules, the correction round, the OpenAI adapter (request shape and

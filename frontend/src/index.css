@@ -220,6 +220,68 @@ button.link {
   background: #eef3fd;
 }
 
+.answer {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+}
+
+.answer p {
+  margin: 0;
+}
+
+.answer .spinner {
+  margin-right: 6px;
+}
+
+button.sources {
+  padding: 0 7px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #f3f5f8;
+  color: var(--accent);
+  font: inherit;
+  font-size: 12px;
+  vertical-align: 1px;
+  cursor: pointer;
+}
+
+button.sources.on {
+  border-color: var(--accent);
+  background: #eef3fd;
+}
+
+.source-list,
+.follow-ups {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.answer-note {
+  margin-top: 8px !important;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.follow-ups .chip {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.follow-ups .chip:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.follow-up-chip {
+  border-style: dashed;
+}
+
 button.primary:disabled {
   opacity: 0.6;
   cursor: progress;

@@ -1,4 +1,4 @@
-import type { MentionVerdict, SearchOptions, VisualizationResponse } from './types'
+import type { MentionVerdict, SearchOptions, VisualizationResponse, WrittenAnswer } from './types'
 
 /** `code` is set for answers that explain why there is no chart (refusals, unknown trials). */
 export class ApiError extends Error {
@@ -35,6 +35,19 @@ export async function judgeMentions(nctIds: string[], names: string[], signal?: 
     signal,
   })
   if (response.ok) return (await response.json()).verdicts
+  const [message] = await describeError(response)
+  throw new ApiError(message)
+}
+
+/** POST /api/answers: the question as asked (with `plan`, its meta.plan) answered in words. */
+export async function writeAnswer(request: unknown, signal?: AbortSignal): Promise<WrittenAnswer> {
+  const response = await fetch('/api/answers', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+    signal,
+  })
+  if (response.ok) return response.json()
   const [message] = await describeError(response)
   throw new ApiError(message)
 }

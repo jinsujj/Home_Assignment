@@ -1,15 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ApiError, askQuestion, getOptions, getVersion, runPlan } from './api/client'
-import { citationPointers, citationsAt, resolvedViews } from './api/references'
+import { ApiError, askQuestion, getOptions, getVersion, runPlan, writeAnswer } from './api/client'
+import { citationPointers, citationsAt, resolvedViews, selectionAt } from './api/references'
 import type {
   Citations,
+  Conversation,
   NetworkData,
   SearchOptions,
   Selection,
   View,
   Visualization,
   VisualizationResponse,
+  WrittenAnswer,
 } from './api/types'
+import { AnswerPanel } from './components/AnswerPanel'
 import { CitationPanel } from './components/CitationPanel'
 import { Composer } from './components/Composer'
 import { MetaPanel } from './components/MetaPanel'
@@ -19,10 +22,17 @@ import { type Entry, entryKey, loadHistory, remember, saveHistory } from './hist
 import { EXAMPLES, type StructuredFields } from './presets'
 
 type Call = (request: unknown, signal: AbortSignal) => Promise<VisualizationResponse>
-type Asked = Pick<Entry, 'key' | 'query' | 'fields'>
+type Asked = Pick<Entry, 'key' | 'query' | 'fields' | 'context'>
 
-const questionRequest = (query: string, fields: StructuredFields) => ({ query, ...fields })
-const askedOf = (entry: Entry): Asked => ({ key: entry.key, query: entry.query, fields: entry.fields })
+const questionRequest = (query: string, fields: StructuredFields, context?: Conversation | null) => ({
+  query,
+  ...fields,
+  ...(context ? { context } : {}),
+})
+const askedOf = (entry: Entry): Asked => ({ key: entry.key, query: entry.query, fields: entry.fields, context: entry.context })
+const shorten = (text: string, max = 40) => (text.length > max ? `${text.slice(0, max - 1)}…` : text)
+/** POST /api/visualize accepts at most the last 5 questions of a conversation. */
+const MAX_EARLIER = 5
 /** "2026-10-09T09:00:05" -> "2026-10-09 09:00" */
 const snapshot = (version: string) => version.replace('T', ' ').slice(0, 16)
 
@@ -65,6 +75,14 @@ export default function App() {
   const [fields, setFields] = useState<StructuredFields>(last?.fields ?? EXAMPLES[0].fields ?? {})
   const [planText, setPlanText] = useState(last?.response ? JSON.stringify({ plan: last.response.meta.plan }, null, 2) : '')
   const [result, setResult] = useState<VisualizationResponse | null>(last?.response ?? null)
+  // The conversation the shown answer refined, if it was a follow-up.
+  const [resultContext, setResultContext] = useState<Conversation | null>(last?.context ?? null)
+  const [answer, setAnswer] = useState<WrittenAnswer | null>(last?.answer ?? null)
+  const [writing, setWriting] = useState(false)
+  const [answerProblem, setAnswerProblem] = useState<string | null>(null)
+  // Whether the next question follows up on the shown answer; each new answer turns it on.
+  const [followUp, setFollowUp] = useState(true)
+  const writingFor = useRef<AbortController | null>(null)
   const [error, setError] = useState<{ message: string; explained: boolean } | null>(
     last?.notice ? { message: last.notice, explained: true } : null,
   )
@@ -90,6 +108,29 @@ export default function App() {
     return () => controller.abort()
   }, [])
 
+  // The answer in words follows the chart: written from the same data, stored with the entry.
+  const writeFor = useCallback((response: VisualizationResponse | null, asked?: Asked) => {
+    writingFor.current?.abort()
+    setAnswer(null)
+    setAnswerProblem(null)
+    setWriting(false)
+    if (!response?.meta.query || !asked) return
+    const controller = new AbortController()
+    writingFor.current = controller
+    setWriting(true)
+    writeAnswer({ ...questionRequest(asked.query, asked.fields, asked.context), plan: response.meta.plan }, controller.signal)
+      .then((written) => {
+        setAnswer(written)
+        setHistory((h) => h.map((e) => (e.key === asked.key ? { ...e, answer: written } : e)))
+      })
+      .catch((e: unknown) => {
+        if (!controller.signal.aborted) setAnswerProblem(e instanceof Error ? e.message : String(e))
+      })
+      .finally(() => {
+        if (writingFor.current === controller) setWriting(false)
+      })
+  }, [])
+
   // State changes only once the response arrives; a newer request aborts the older one.
   const send = useCallback((call: Call, request: unknown, asked?: Asked) => {
     inFlight.current?.abort()
@@ -98,11 +139,14 @@ export default function App() {
     call(request, controller.signal)
       .then((response) => {
         setResult(response)
+        setResultContext(asked?.context ?? null)
+        setFollowUp(true)
         setViewIndex(0)
         setPlanText(JSON.stringify({ plan: response.meta.plan }, null, 2))
         setError(null)
         knownVersion.current = response.meta.data_version ?? knownVersion.current
         if (asked) setHistory((h) => remember(h, { ...asked, response, dataVersion: response.meta.data_version }))
+        writeFor(response, asked)
       })
       .catch((e: unknown) => {
         if (!controller.signal.aborted) {
@@ -110,6 +154,7 @@ export default function App() {
           const message = e instanceof Error ? e.message : String(e)
           const explained = e instanceof ApiError && !!e.code
           setResult(null)
+          writeFor(null)
           setError({ message, explained })
           // Explained answers (refusals, unknown trials) are answers too; failures are retried.
           if (asked && explained) {
@@ -120,14 +165,14 @@ export default function App() {
       .finally(() => {
         if (inFlight.current === controller) setLoading(false)
       })
-  }, [])
+  }, [writeFor])
 
   // Answer the first example on a first visit; the initial state already says "loading".
   // A restored answer is asked again if the registry has published newer data since.
   useEffect(() => {
     if (!restored.current) {
       const { query, fields = {} } = EXAMPLES[0]
-      send(askQuestion, questionRequest(query, fields), { key: entryKey(query, fields), query, fields })
+      send(askQuestion, questionRequest(query, fields), { key: entryKey(query, fields), query, fields, context: null })
       return () => inFlight.current?.abort()
     }
     const controller = new AbortController()
@@ -136,12 +181,14 @@ export default function App() {
       .then((current) => {
         if (last && current && current !== last.dataVersion && generation.current === 0) {
           setLoading(true)
-          send(askQuestion, questionRequest(last.query, last.fields), askedOf(last))
+          send(askQuestion, questionRequest(last.query, last.fields, last.context), askedOf(last))
+        } else if (last?.response && !last.answer && generation.current === 0) {
+          writeFor(last.response, askedOf(last))
         }
       })
       .catch(() => {})
     return () => controller.abort()
-  }, [send])
+  }, [send, writeFor])
 
   const start = (call: Call, request: unknown, asked?: Asked) => {
     generation.current++
@@ -161,6 +208,14 @@ export default function App() {
     setQuery(entry.query)
     setFields(entry.fields)
     setResult(entry.response ?? null)
+    setResultContext(entry.context ?? null)
+    setFollowUp(true)
+    if (entry.answer) {
+      writeFor(null)
+      setAnswer(entry.answer)
+    } else {
+      writeFor(entry.response ?? null, askedOf(entry))
+    }
     setError(entry.notice ? { message: entry.notice, explained: true } : null)
     setViewIndex(0)
     setSelection(null)
@@ -177,38 +232,54 @@ export default function App() {
         if (version && version !== entry.dataVersion) {
           setQuery(entry.query)
           setFields(entry.fields)
-          start(askQuestion, questionRequest(entry.query, entry.fields), askedOf(entry))
+          start(askQuestion, questionRequest(entry.query, entry.fields, entry.context), askedOf(entry))
         } else {
           show(entry)
         }
       })
   }
 
+  // What a follow-up of the shown answer refines: its question after those it refined.
+  const conversation: Conversation | null = result?.meta.query
+    ? { questions: [...(resultContext?.questions ?? []), result.meta.query].slice(-MAX_EARLIER), plan: result.meta.plan }
+    : null
+
   const showTrial = (nctId: string) => {
     const next = { ...fields, nct_id: nctId }
     setFields(next)
-    ask(query, next)
+    ask(query, next, resultContext)
   }
 
-  const ask = (text = query, structured = fields) => {
+  const ask = (text = query, structured = fields, context = followUp ? conversation : null) => {
     const question = text.trim()
     if (!question) return
-    const key = entryKey(question, structured)
+    const key = entryKey(question, structured, context)
     const known = history.find((entry) => entry.key === key)
     if (known) open(known)
-    else start(askQuestion, questionRequest(question, structured), { key, query: question, fields: structured })
+    else start(askQuestion, questionRequest(question, structured, context), { key, query: question, fields: structured, context })
   }
 
   const choose = (index: number) => {
     const example = EXAMPLES[index]
     setQuery(example.query)
     setFields(example.fields ?? {})
-    ask(example.query, example.fields ?? {})
+    ask(example.query, example.fields ?? {}, null)
+  }
+
+  const followUpWith = (text: string) => {
+    setQuery(text)
+    ask(text, fields, conversation)
+  }
+
+  const selectFromAnswer = (selection: Selection) => {
+    setSelection(selection)
+    requestAnimationFrame(() => document.getElementById('citations')?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
   }
 
   const runEditedPlan = () => {
     try {
       start(runPlan, JSON.parse(planText))
+      setResultContext(null)
     } catch (e) {
       setError({ message: `Invalid JSON: ${(e as Error).message}`, explained: false })
     }
@@ -256,6 +327,9 @@ export default function App() {
                   <button className={entry.key === activeKey ? 'active' : ''} onClick={() => open(entry)}>
                     <span>{entry.query}</span>
                     {Object.keys(entry.fields).length > 0 && <span className="muted">{` (${describeFields(entry.fields)})`}</span>}
+                    {entry.context && (
+                      <span className="muted">{` · after “${shorten(entry.context.questions[entry.context.questions.length - 1])}”`}</span>
+                    )}
                     {entry.notice && <span className="muted"> · no chart</span>}
                   </button>
                 </li>
@@ -341,6 +415,18 @@ export default function App() {
                     )}
                   </div>
                 )}
+                {result.meta.query && (
+                  <AnswerPanel
+                    key={activeKey ?? ''}
+                    answer={answer}
+                    writing={writing}
+                    problem={answerProblem}
+                    resolve={(pointer) => selectionAt(result, pointer)}
+                    onSelect={selectFromAnswer}
+                    onFollowUp={followUpWith}
+                    busy={loading}
+                  />
+                )}
               </header>
               <section className={`card ${loading ? 'stale' : ''}`}>
                 {views.length > 1 && (
@@ -378,7 +464,7 @@ export default function App() {
                 )}
               </section>
               <div className="columns">
-                <section className="card">
+                <section className="card" id="citations">
                   <h3>Citations</h3>
                   <CitationPanel
                     key={selection ? `${selection.label}|${selection.count}` : 'none'}
@@ -410,6 +496,8 @@ export default function App() {
           options={options}
           loading={loading}
           onAsk={() => ask()}
+          followingUp={followUp && conversation ? conversation.questions[conversation.questions.length - 1] : null}
+          onStopFollowingUp={() => setFollowUp(false)}
         />
       </main>
     </div>
