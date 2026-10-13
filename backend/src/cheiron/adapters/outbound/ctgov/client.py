@@ -7,7 +7,13 @@ from typing import Any
 import httpx
 
 from cheiron.adapters.outbound.ctgov.mapper import FIELDS, SITE_FIELDS, to_trial
-from cheiron.adapters.outbound.ctgov.params import COUNTABLE_AREAS, category_params, to_params
+from cheiron.adapters.outbound.ctgov.params import (
+    COUNTABLE_AREAS,
+    category_params,
+    essie_phrase,
+    mentioned_only_params,
+    to_params,
+)
 from cheiron.adapters.outbound.ctgov.results_mapper import (
     CANDIDATE_FIELDS,
     NAME_AREAS,
@@ -74,6 +80,19 @@ class CtGovTrialSource:
             )
             counts[key] = page["totalCount"]
         return counts
+
+    async def mentioned_only(self, criteria: TrialFilter, criterion: str, limit: int) -> frozenset[str] | None:
+        if not essie_phrase(getattr(criteria, criterion) or ""):
+            return frozenset()  # no such criterion to check
+        base = {**mentioned_only_params(criteria, criterion), "fields": "NCTId", "pageSize": str(MAX_PAGE_SIZE)}
+        page = await self._get({**base, "countTotal": "true"})
+        if page["totalCount"] > limit:
+            return None
+        ids = [s["protocolSection"]["identificationModule"]["nctId"] for s in page.get("studies", [])]
+        while token := page.get("nextPageToken"):
+            page = await self._get({**base, "pageToken": token})
+            ids += [s["protocolSection"]["identificationModule"]["nctId"] for s in page.get("studies", [])]
+        return frozenset(ids)
 
     async def data_version(self) -> str:
         """Timestamp of the data snapshot being served; it changes when new data is published

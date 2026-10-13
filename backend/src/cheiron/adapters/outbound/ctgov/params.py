@@ -28,6 +28,15 @@ COUNTABLE_AREAS = {
     Dimension.INTERVENTION_TYPE: "InterventionType",
 }
 
+# Registered fields per free-text criterion. The registry applies its synonyms within them:
+# "pembrolizumab", "Keytruda" and "MK-3475" each find the same 2,639 of the 2,974 trials that
+# the intervention search returns; the other 335 only mention the drug, e.g. in a description.
+REGISTERED_AREAS = {
+    "intervention": ("InterventionName", "InterventionOtherName"),
+    "condition": ("Condition",),
+    "sponsor": ("LeadSponsorName", "CollaboratorName"),
+}
+
 
 def to_params(criteria: TrialFilter) -> dict[str, str]:
     params: dict[str, str] = {}
@@ -61,8 +70,19 @@ def to_params(criteria: TrialFilter) -> dict[str, str]:
 
 def category_params(criteria: TrialFilter, dimension: Dimension, key: str) -> dict[str, str]:
     """Trials matching `criteria` that also register `key` under `dimension` (a COUNTABLE_AREAS key)."""
-    params = to_params(criteria)
-    clause = f"AREA[{COUNTABLE_AREAS[dimension]}]{essie_phrase(key)}"
+    return _with_clause(to_params(criteria), f"AREA[{COUNTABLE_AREAS[dimension]}]{essie_phrase(key)}")
+
+
+def mentioned_only_params(criteria: TrialFilter, criterion: str) -> dict[str, str]:
+    """Trials matching `criteria` whose registered fields for the free-text `criterion` (a
+    REGISTERED_AREAS key) do not match it. Words, not a phrase: "Cancer of the Breast" is a
+    registered match for "breast cancer"."""
+    words = essie_phrase(getattr(criteria, criterion))
+    registered = " OR ".join(f"AREA[{area}]({words})" for area in REGISTERED_AREAS[criterion])
+    return _with_clause(to_params(criteria), f"NOT ({registered})")
+
+
+def _with_clause(params: dict[str, str], clause: str) -> dict[str, str]:
     params["filter.advanced"] = f"{params['filter.advanced']} AND {clause}" if "filter.advanced" in params else clause
     return params
 

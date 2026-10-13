@@ -208,8 +208,11 @@ Every row, node and edge carries `citations` (here the "Phase 3" bar for pembrol
       { "nct_id": "NCT04003636",
         "title": "Pembrolizumab (MK-3475) Plus Gemcitabine/Cisplatin ... (KEYNOTE-966)",
         "url": "https://clinicaltrials.gov/study/NCT04003636",
-        "evidence": [ { "field": "protocolSection.designModule.phases", "value": "PHASE3" } ],
-        "excerpt": "phases: PHASE3" }
+        "evidence": [ { "field": "protocolSection.designModule.phases", "value": "PHASE3" },
+                      { "field": "protocolSection.armsInterventionsModule.interventions.name",
+                        "value": "Pembrolizumab" } ],
+        "excerpt": "phases: PHASE3; interventions.name: Pembrolizumab",
+        "mentioned_only": [] }
     ],
     "nct_ids": null } }
 ```
@@ -219,11 +222,25 @@ Every row, node and edge carries `citations` (here the "Phase 3" bar for pembrol
 counts beyond the cap").
 `evidence` names the field of the API's study JSON and the value exactly as registered that put
 the trial into this datum (two entries for an edge, one per endpoint; value and interval limits
-for a posted result); `excerpt` is the same evidence as one line of text, the shape the
-assignment's example uses (`citations[].{nct_id, excerpt}`). `nct_ids` lists every
+for a posted result), followed by why the trial is in the cohort (see below); `excerpt` is the
+same evidence as one line of text, the shape the assignment's example uses
+(`citations[].{nct_id, excerpt}`). `nct_ids` lists every
 contributing trial when the request sets `all_citation_ids`, and is `null` otherwise.
 `notes` lists assumptions and caveats in plain sentences (multi-valued counting, missing
 values, top-N cut-offs, binning).
+
+**Why a trial is in its cohort.** ClinicalTrials.gov's searches for an intervention, condition or
+sponsor also match other text, such as descriptions: 335 of the 2,974 trials found for
+pembrolizumab do not register it as an intervention (e.g. a fecal-transplant study), and 1,195 of
+the first 5,000 lung cancer trials do not register lung cancer as a condition. For each free-text
+filter the service asks the registry which trials only mention the term (`NOT AREA[...]` over
+the registered fields; the registry's synonyms count as registered: "Keytruda", "MK-3475" and
+"pembrolizumab" give the same 2,639). Other trials get the matching registered value as evidence
+(the one sharing most words with the term, else the cohort's most common one, so "Keytruda"
+cites "Pembrolizumab"); trials that only mention it list the term in `mentioned_only`, are cited
+last, and `meta.notes` says how many there are. A live test checks, for every phase 3
+pembrolizumab trial, that the registry's verdict agrees with the registered drug names. This
+costs one request per free-text filter, plus one per 1,000 such trials.
 
 Full lists are opt-in because of size, measured for pembrolizumab: the phase chart grows from
 21 KB to 114 KB (each alternative view repeats its lists) and the drug network from 1,037 KB
@@ -553,8 +570,10 @@ uv provisions the interpreter locally and the Docker image is `python:3.14-slim`
   `meta` flags this. Category counts are completed from the registry for five dimensions (see
   above); time series, top-N charts, networks, histograms and scatters are not. With more time:
   per-year counts for time series, paced to the rate limit (~1 minute for 50 years).
-- Free-text criteria rely on ClinicalTrials.gov's relevance search, which also matches mentions
-  in descriptions (e.g. a fecal-transplant study that mentions pembrolizumab).
+- Free-text criteria rely on ClinicalTrials.gov's search, which also matches mentions in
+  descriptions (11% of pembrolizumab trials, 24% of the first 5,000 lung cancer trials). Such
+  trials are counted, as the registry defines the cohort, but flagged in their citations and
+  counted in `meta.notes`. With more time: an option to count registered trials only.
 - Rate limits are not documented in the API spec (measured: a burst of ~10, then ~1 request
   per second). The client retries `429` with backoff but does not throttle proactively, so a
   first question over two large cohorts takes ~30 s (10 pages plus 16 counts).

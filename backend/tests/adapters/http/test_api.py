@@ -17,8 +17,9 @@ SNAPSHOT = "2026-10-09T09:00:05"
 
 
 class FakeSource:
-    def __init__(self, trials=(), total: int | None = None, error: Exception | None = None, counts=None) -> None:
+    def __init__(self, trials=(), total: int | None = None, error: Exception | None = None, counts=None, mentioned=()) -> None:
         self.trials, self.total, self.error, self.counts = tuple(trials), total, error, counts
+        self.mentioned = mentioned
         self.calls: list[tuple[TrialFilter, int, bool]] = []
 
     async def count_by(self, criteria, dimension, keys):
@@ -26,6 +27,9 @@ class FakeSource:
 
     async def data_version(self) -> str:
         return SNAPSHOT
+
+    async def mentioned_only(self, criteria, criterion, limit):
+        return frozenset(self.mentioned)
 
     async def search(self, criteria: TrialFilter, max_trials: int, *, include_sites: bool = False) -> TrialSearchResult:
         self.calls.append((criteria, max_trials, include_sites))
@@ -82,6 +86,7 @@ async def test_runs_a_plan_and_returns_spec_with_citations_and_meta() -> None:
                         "url": "https://clinicaltrials.gov/study/NCT1",
                         "evidence": [{"field": "protocolSection.designModule.phases", "value": "PHASE2"}],
                         "excerpt": "phases: PHASE2",
+                        "mentioned_only": [],
                     }
                 ],
                 "nct_ids": None,
@@ -384,3 +389,14 @@ async def test_answers_carry_the_data_snapshot_they_were_computed_from() -> None
 
     assert answer["meta"]["data_version"] == SNAPSHOT
     assert (await client.get("/api/version")).json() == {"data_version": SNAPSHOT}
+
+
+async def test_citations_say_which_trials_only_mention_the_filtered_drug() -> None:
+    trials = [trial("NCT1", phases=(Phase.PHASE2,), interventions=(drug("Pembrolizumab"),)), trial("NCT2", phases=(Phase.PHASE2,))]
+    plan = {"kind": "count_by", "cohorts": [PEMBRO], "dimension": "phase"}
+
+    body = (await client_for(FakeSource(trials, mentioned={"NCT2"})).post("/api/plans", json={"plan": plan})).json()
+
+    registered, mentioned = body["visualization"]["data"][0]["citations"]["items"]
+    assert registered["excerpt"] == "phases: PHASE2; interventions.name: Pembrolizumab"
+    assert (registered["mentioned_only"], mentioned["mentioned_only"]) == ([], ["pembrolizumab"])

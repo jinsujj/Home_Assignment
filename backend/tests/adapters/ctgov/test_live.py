@@ -44,3 +44,16 @@ async def test_registry_category_counts_equal_our_own_aggregation() -> None:
         for dimension in COUNTABLE_AREAS:
             ours = Counter(f.key for t in result.trials for f in dimension_facets(t, dimension))
             assert await source.count_by(criteria, dimension, list(ours)) == dict(ours), dimension
+
+
+async def test_trials_that_only_mention_a_drug_do_not_register_it() -> None:
+    criteria = TrialFilter(intervention="pembrolizumab", phases=frozenset({Phase.PHASE3}))
+    async with httpx.AsyncClient(timeout=30) as http:
+        source = CtGovTrialSource(http)
+        mentioned = await source.mentioned_only(criteria, "intervention", limit=1000)
+        result = await source.search(criteria, max_trials=1000)
+
+    assert mentioned and not result.truncated
+    for trial in result.trials:
+        names = " ".join(n for i in trial.interventions for n in (i.name, *i.other_names)).casefold()
+        assert ("pembrolizumab" in names or "keytruda" in names or "mk-3475" in names) is (trial.nct_id not in mentioned)

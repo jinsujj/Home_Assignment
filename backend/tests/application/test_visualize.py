@@ -43,6 +43,9 @@ class FakeSource:
     async def data_version(self) -> None:
         return None
 
+    async def mentioned_only(self, criteria, criterion, limit):
+        return frozenset()
+
 
 async def test_a_grounded_first_draft_is_used_as_is() -> None:
     planner = ScriptedPlanner(GOOD)

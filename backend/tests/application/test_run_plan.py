@@ -8,7 +8,7 @@ from cheiron.domain.results import PostedResults
 from cheiron.domain.trial import Phase, Status
 from cheiron.domain.trial_filter import TrialFilter
 from cheiron.domain.visualization import ChartType
-from tests.domain.factories import trial
+from tests.domain.factories import drug, trial
 
 pytestmark = pytest.mark.anyio
 
@@ -18,8 +18,11 @@ SNAPSHOT = "2026-10-09T09:00:05"
 
 
 class FakeSource:
-    def __init__(self, results: dict[TrialFilter, TrialSearchResult], counts=None, count_error=None) -> None:
+    def __init__(
+        self, results: dict[TrialFilter, TrialSearchResult], counts=None, count_error=None, mentioned=None
+    ) -> None:
         self.results = results
+        self.mentioned: dict[tuple[TrialFilter, str], frozenset[str] | None] = mentioned or {}
         self.counts: dict[TrialFilter, dict[str, int]] = counts or {}
         self.count_error = count_error
         self.calls: list[tuple[TrialFilter, int]] = []
@@ -34,6 +37,9 @@ class FakeSource:
 
     async def data_version(self) -> str:
         return SNAPSHOT
+
+    async def mentioned_only(self, criteria: TrialFilter, criterion: str, limit: int) -> frozenset[str] | None:
+        return self.mentioned.get((criteria, criterion), frozenset())
 
     async def search(self, criteria: TrialFilter, max_trials: int, *, include_sites: bool = False) -> TrialSearchResult:
         self.calls.append((criteria, max_trials))
@@ -189,3 +195,34 @@ async def test_cohorts_without_any_match_are_named() -> None:
     result = await run_plan(CountBy((A,), Dimension.PHASE), source)
 
     assert result.notes == ("No trials match the filters for A; check the spelling or try a broader term.",)
+
+
+async def test_citations_show_why_each_trial_is_in_its_cohort() -> None:
+    registered = trial("NCT1", phases=(Phase.PHASE2,), interventions=(drug("Pembrolizumab"),))
+    mentioning = trial("NCT2", phases=(Phase.PHASE2,), interventions=(drug("Fecal microbiota"),))
+    source = FakeSource(
+        {A.filter: TrialSearchResult((mentioning, registered), total_count=2)},
+        mentioned={(A.filter, "intervention"): frozenset({"NCT2"})},
+    )
+
+    result = await run_plan(CountBy((A,), Dimension.PHASE), source)
+
+    first, second = result.visualization.data[0]["citations"].items
+    assert (first.nct_id, first.excerpt, first.mentioned_only) == ("NCT1", "phases: PHASE2; interventions.name: Pembrolizumab", ())
+    assert (second.nct_id, second.excerpt, second.mentioned_only) == ("NCT2", "phases: PHASE2", ("a",))
+    assert result.notes == (
+        "1 of 2 analyzed trials for A mention 'a' without registering it as an intervention (ClinicalTrials.gov's "
+        "search also matches text such as descriptions); their citations list it under mentioned_only.",
+    )
+
+
+async def test_mentions_that_cannot_be_checked_are_reported() -> None:
+    source = FakeSource(
+        {A.filter: TrialSearchResult((trial("NCT1", phases=(Phase.PHASE2,)),), total_count=1)},
+        mentioned={(A.filter, "intervention"): None},
+    )
+
+    result = await run_plan(CountBy((A,), Dimension.PHASE), source)
+
+    assert result.notes == ("Trials that only mention 'a' for A could not be told apart from the others.",)
+    assert result.visualization.data[0]["citations"].items[0].mentioned_only == ()

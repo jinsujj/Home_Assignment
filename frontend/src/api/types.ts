@@ -39,6 +39,8 @@ export interface Citation {
   evidence: Evidence[]
   /** The evidence as one line of registered text, e.g. "phases: PHASE3". */
   excerpt: string
+  /** Cohort filter terms the trial only mentions (e.g. in its description) rather than registers. */
+  mentioned_only: string[]
 }
 
 export interface Citations {

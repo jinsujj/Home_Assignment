@@ -211,8 +211,11 @@ cd ../frontend && npm run build && npm run lint   # 타입 검사, 빌드, lint
       { "nct_id": "NCT04003636",
         "title": "Pembrolizumab (MK-3475) Plus Gemcitabine/Cisplatin ... (KEYNOTE-966)",
         "url": "https://clinicaltrials.gov/study/NCT04003636",
-        "evidence": [ { "field": "protocolSection.designModule.phases", "value": "PHASE3" } ],
-        "excerpt": "phases: PHASE3" }
+        "evidence": [ { "field": "protocolSection.designModule.phases", "value": "PHASE3" },
+                      { "field": "protocolSection.armsInterventionsModule.interventions.name",
+                        "value": "Pembrolizumab" } ],
+        "excerpt": "phases: PHASE3; interventions.name: Pembrolizumab",
+        "mentioned_only": [] }
     ],
     "nct_ids": null } }
 ```
@@ -220,11 +223,23 @@ cd ../frontend && npm run build && npm run lint   # 타입 검사, 빌드, lint
 - `total`은 그 데이터 항목을 이루는, 집계한 시험의 수다. `items`는 앞의 몇 건(기본 5건)을 자세히 보여준다.
   건수를 등록부에서 받은 경우에는 `total`이 `trial_count`보다 작다("상한을 넘는 정확한 건수" 참고).
 - `evidence`는 그 시험을 이 데이터 항목에 넣은, API 시험 JSON의 필드와 등록된 그대로의 값이다.
-  연결선은 양 끝마다 하나씩 두 개, 게시된 결과는 값과 구간 한계를 담는다.
+  연결선은 양 끝마다 하나씩 두 개, 게시된 결과는 값과 구간 한계를 담는다. 그 뒤에 시험이 코호트에
+  속하는 근거가 붙는다(아래 참고).
 - `excerpt`는 같은 근거를 한 줄 텍스트로 쓴 것으로, 과제 예시의 형태(`citations[].{nct_id, excerpt}`)와 같다.
 - `nct_ids`는 요청에 `all_citation_ids`를 켰을 때 기여한 모든 시험을 담고, 아니면 `null`이다.
 - `notes`는 가정과 주의 사항을 평이한 문장으로 알려 준다(여러 값을 가진 항목의 집계, 누락된
   값, 상위 N개 제한, 구간 나누기).
+
+**시험이 코호트에 속하는 근거.** ClinicalTrials.gov의 중재·질환·스폰서 검색은 설명문 같은 다른
+텍스트도 찾는다. 펨브롤리주맙으로 찾은 2,974건 중 335건은 이 약을 중재로 등록하지 않았고(예: 대변
+미생물 이식 연구), 폐암 시험 앞 5,000건 중 1,195건은 폐암을 질환으로 등록하지 않았다. 서비스는
+자유 텍스트 필터마다 어떤 시험이 그 단어를 언급만 하는지 등록부에 묻는다(등록 필드에 대한
+`NOT AREA[...]`. 등록부의 동의어는 등록으로 인정된다: "Keytruda", "MK-3475", "pembrolizumab" 모두 같은
+2,639건). 나머지 시험에는 일치하는 등록값을 근거로 붙인다(단어가 가장 많이 겹치는 값, 없으면
+코호트에서 가장 흔한 값. 그래서 "Keytruda"는 "Pembrolizumab"을 인용한다). 언급만 하는 시험은
+`mentioned_only`에 그 단어가 담기고, 인용 순서에서 뒤로 가며, `meta.notes`가 그 수를 알려 준다.
+실제 API 테스트가 3상 펨브롤리주맙 시험 전부에 대해 등록부의 판정과 등록된 약물명이 일치하는지
+확인한다. 비용은 자유 텍스트 필터마다 요청 하나, 그런 시험 1,000건마다 하나씩 더 든다.
 
 전체 목록을 선택 사항으로 둔 것은 크기 때문이다. 펨브롤리주맙 기준 실측으로 단계 차트는
 21 KB에서 114 KB(대체 보기마다 목록을 반복), 약물 네트워크는 1,037 KB에서 1,268 KB로 커진다.
@@ -532,8 +547,10 @@ Python 3.14 이상을 대상으로 한다(기본으로 지연 평가되는 어�
   표시한다. 다섯 차원은 범주별 건수를 등록부에서 채운다(위 참고). 시계열, 상위 N개 차트,
   네트워크, 히스토그램, 산포도는 채우지 않는다. 시간이 더 있다면: 요청 한도에 맞춘 시계열의 연도별
   건수(50년에 약 1분).
-- 자유 텍스트 조건은 ClinicalTrials.gov의 관련도 검색에 기대므로, 설명에서 언급만 한 시험도 걸린다
-  (예: 펨브롤리주맙을 언급한 대변 이식 연구).
+- 자유 텍스트 조건은 ClinicalTrials.gov의 검색에 기대므로, 설명에서 언급만 한 시험도 걸린다
+  (펨브롤리주맙 시험의 11%, 폐암 시험 앞 5,000건의 24%). 코호트는 등록부의 검색이 정하므로 이런
+  시험도 세지만, 인용에 표시하고 `meta.notes`에 그 수를 알린다. 시간이 더 있다면: 등록된 시험만
+  세는 옵션.
 - 요청 한도가 API 명세에 없다(실측: 처음 약 10건, 그 뒤 초당 약 1건). 클라이언트는 `429`를
   백오프로 재시도하지만 미리 속도를 조절하지는 않는다. 그래서 큰 코호트 둘에 대한 첫 질문은 약
   30초 걸린다(10페이지와 건수 16건).

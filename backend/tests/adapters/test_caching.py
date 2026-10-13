@@ -277,3 +277,17 @@ async def test_reports_the_snapshot_its_data_belongs_to() -> None:
     assert await cache.data_version() != version.value  # checked at most every 10 minutes
     clock.now += 601
     assert await cache.data_version() == "2026-10-10T09:00:00"
+
+
+async def test_mention_checks_are_cached() -> None:
+    class Mentions(CountingSource):
+        async def mentioned_only(self, criteria, criterion, limit):
+            self.calls.append(("mentioned", criterion))
+            return frozenset({"NCT1"})
+
+    inner = Mentions()
+    cache = CachingTrialSource(inner, Version())
+
+    assert await cache.mentioned_only(PEMBRO, "intervention", 5000) == {"NCT1"}
+    assert await cache.mentioned_only(PEMBRO, "intervention", 5000) == {"NCT1"}
+    assert inner.calls == [("mentioned", "intervention")]

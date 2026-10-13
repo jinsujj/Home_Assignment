@@ -6,17 +6,19 @@ from dataclasses import dataclass
 
 from cheiron.application.ports import Registry, TrialCandidate, TrialSearchResult, TrialSourceError
 from cheiron.application.trial_lookup import NoPostedResults, choose_trial
-from cheiron.domain.analysis import AnalysisPlan, CountBy, TrialResults, needs_sites
+from cheiron.domain.analysis import AnalysisPlan, Cohort, CountBy, TrialResults, needs_sites
 from cheiron.domain.charts import DEFAULT_MAX_CITATIONS, build_visualization
 from cheiron.domain.charts.trial_results import build_trial_results
 from cheiron.domain.charts.views import alternative_views
 from cheiron.domain.facets import dimension_facets
+from cheiron.domain.membership import FREE_TEXT_CRITERIA, Membership, cite_memberships, memberships
 from cheiron.domain.trial_filter import TrialFilter
 from cheiron.domain.visualization import Visualization
 
 DEFAULT_MAX_TRIALS = 5000
 MAX_COUNT_REQUESTS = 20
 """Registry counts cost one request per category, and the API serves about one per second."""
+_REGISTERED_AS = {"intervention": "an intervention", "condition": "a condition", "sponsor": "a sponsor or collaborator"}
 
 
 @dataclass(frozen=True)
@@ -72,8 +74,16 @@ async def run_plan(
         *(source.search(c.filter, max_trials_per_cohort, include_sites=include_sites) for c in cohorts)
     )
     totals = await _registry_counts(plan, results, source)
-    visualization = build_visualization(
-        plan, {c.label: r.trials for c, r in zip(cohorts, results, strict=True)}, max_citations, totals
+    by_cohort, mention_notes = await _memberships(cohorts, results, source, max_trials_per_cohort)
+    # Trials that register the filtered terms come first, so they are the ones cited in full.
+    trials = {
+        c.label: sorted(r.trials, key=lambda t: bool(by_cohort[c.label][t.nct_id].mentioned_only))
+        for c, r in zip(cohorts, results, strict=True)
+    }
+    visualization = cite_memberships(
+        build_visualization(plan, trials, max_citations, totals),
+        by_cohort,
+        cohorts[0].label if len(cohorts) == 1 else None,
     )
     reports = tuple(
         CohortReport(c.label, c.filter, r.total_count, len(r.trials), exact_counts=c.label in totals)
@@ -88,6 +98,7 @@ async def run_plan(
         for r in reports
         if r.truncated
     )
+    notes += mention_notes
     notes += tuple(
         f"No trials match the filters{f' for {r.label}' if r.label else ''}; "
         "check the spelling or try a broader term."
@@ -106,6 +117,34 @@ async def run_plan(
         alternatives=alternative_views(visualization),
         data_version=await _data_version(source),
     )
+
+
+async def _memberships(
+    cohorts: Sequence[Cohort], results: Sequence[TrialSearchResult], source: Registry, limit: int
+) -> tuple[dict[str, dict[str, Membership]], tuple[str, ...]]:
+    """Why each analyzed trial is in its cohort, by cohort label, and notes on trials that only
+    mention a free-text filter. One request per free-text filter, plus pages of IDs if many."""
+    by_cohort, notes = {}, []
+    for cohort, result in zip(cohorts, results, strict=True):
+        mentioned: dict[str, frozenset[str] | None] = {}
+        for criterion in FREE_TEXT_CRITERIA:
+            if not (term := getattr(cohort.filter, criterion)):
+                continue
+            try:
+                mentioned[criterion] = await source.mentioned_only(cohort.filter, criterion, limit)
+            except TrialSourceError:
+                mentioned[criterion] = None
+            where = f" for {cohort.label}" if cohort.label else ""
+            if (ids := mentioned[criterion]) is None:
+                notes.append(f"Trials that only mention {term!r}{where} could not be told apart from the others.")
+            elif count := sum(t.nct_id in ids for t in result.trials):
+                notes.append(
+                    f"{count:,} of {len(result.trials):,} analyzed trials{where} mention {term!r} without registering "
+                    f"it as {_REGISTERED_AS[criterion]} (ClinicalTrials.gov's search also matches text such as "
+                    "descriptions); their citations list it under mentioned_only."
+                )
+        by_cohort[cohort.label] = memberships(result.trials, cohort.filter, mentioned)
+    return by_cohort, tuple(notes)
 
 
 async def _registry_counts(

@@ -552,3 +552,7 @@ pre {
     height: 100vh;
   }
 }
+
+.citations .mentioned {
+  color: #a15c00;
+}

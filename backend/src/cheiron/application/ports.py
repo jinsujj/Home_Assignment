@@ -42,6 +42,12 @@ class TrialSource(Protocol):
         """
         ...
 
+    async def mentioned_only(self, criteria: TrialFilter, criterion: str, limit: int) -> frozenset[str] | None:
+        """NCT IDs of trials matching `criteria` that do not register the free-text `criterion`
+        ("intervention", "condition" or "sponsor"; synonyms count as registered) and match it only
+        through other text, such as a description. None when there are more than `limit`."""
+        ...
+
     async def data_version(self) -> str | None:
         """Timestamp of the registry data snapshot being served; None when unknown."""
         ...

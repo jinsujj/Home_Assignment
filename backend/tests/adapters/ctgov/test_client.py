@@ -232,3 +232,26 @@ async def test_dimensions_the_registry_cannot_count_send_no_request() -> None:
         raise AssertionError("no request expected")
 
     assert await _source(handler).count_by(CRITERIA, Dimension.START_YEAR, ["2020"]) is None
+
+
+def _ids(*ids: str) -> list[dict]:
+    return [{"protocolSection": {"identificationModule": {"nctId": i}}} for i in ids]
+
+
+async def test_mention_only_trials_are_listed_page_by_page_up_to_a_limit() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.url.params.get("pageToken") is None:
+            return httpx.Response(200, json={"totalCount": 3, "studies": _ids("NCT1", "NCT2"), "nextPageToken": "t"})
+        return httpx.Response(200, json={"studies": _ids("NCT3")})
+
+    source = _source(handler)
+
+    assert await source.mentioned_only(CRITERIA, "intervention", limit=3) == {"NCT1", "NCT2", "NCT3"}
+    assert requests[0].url.params["filter.advanced"].startswith("NOT (AREA[InterventionName](pembrolizumab)")
+    assert requests[0].url.params["fields"] == "NCTId"
+    assert await source.mentioned_only(CRITERIA, "intervention", limit=2) is None  # more than the limit
+    assert await source.mentioned_only(CRITERIA, "condition", limit=3) == frozenset()  # no condition filter
+    assert len(requests) == 3

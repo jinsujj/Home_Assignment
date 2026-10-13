@@ -29,6 +29,11 @@ export function CitationPanel({ selection }: { selection: Selection | null }) {
                   <code>{e.field.split('.').slice(-2).join('.')}</code> = <q>{e.value}</q>
                 </li>
               ))}
+              {c.mentioned_only.map((term) => (
+                <li key={term} className="mentioned">
+                  mentions <q>{term}</q> only in its text; not registered as such
+                </li>
+              ))}
             </ul>
           </li>
         ))}

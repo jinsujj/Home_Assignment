@@ -1,7 +1,7 @@
 """In-memory caches as port decorators: registry data until new data is published, and plans.
 
-CachingTrialSource keeps searches, category counts, name lookups and posted results until new
-data is published.
+CachingTrialSource keeps searches, category counts, mention checks, name lookups and posted
+results until new data is published.
 
 ClinicalTrials.gov publishes data in one batch per US business day (measured: ~800–1,200
 updated studies per posting day, none on weekends and holidays), and `/version` reports
@@ -64,6 +64,13 @@ class CachingTrialSource:
         return await self._cached(
             ("count_by", criteria, dimension, tuple(keys)),
             lambda: self._inner.count_by(criteria, dimension, keys),
+            lambda _: COUNTS_WEIGHT,
+        )
+
+    async def mentioned_only(self, criteria: TrialFilter, criterion: str, limit: int) -> frozenset[str] | None:
+        return await self._cached(
+            ("mentioned_only", criteria, criterion, limit),
+            lambda: self._inner.mentioned_only(criteria, criterion, limit),
             lambda _: COUNTS_WEIGHT,
         )
 

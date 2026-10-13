@@ -63,11 +63,16 @@ class Citation:
     evidence: tuple[Evidence, ...]
     excerpt: str
     """The evidence as one line of registered text, e.g. "phases: PHASE3"."""
+    mentioned_only: tuple[str, ...] = ()
+    """Cohort filter terms the trial matches only through other text, such as its description,
+    not through its registered interventions, conditions or sponsors."""
 
     @classmethod
-    def of(cls, nct_id: str, title: str, evidence: tuple[Evidence, ...]) -> Citation:
+    def of(
+        cls, nct_id: str, title: str, evidence: tuple[Evidence, ...], mentioned_only: tuple[str, ...] = ()
+    ) -> Citation:
         excerpt = "; ".join(f"{_short_field(e.field)}: {e.value}" for e in evidence)
-        return cls(nct_id, title, STUDY_URL.format(nct_id=nct_id), evidence, excerpt)
+        return cls(nct_id, title, STUDY_URL.format(nct_id=nct_id), evidence, excerpt, mentioned_only)
 
 
 @dataclass(frozen=True)

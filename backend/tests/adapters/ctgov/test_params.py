@@ -1,4 +1,4 @@
-from cheiron.adapters.outbound.ctgov.params import to_params
+from cheiron.adapters.outbound.ctgov.params import mentioned_only_params, to_params
 from cheiron.domain.trial import Phase, Status, StudyType
 from cheiron.domain.trial_filter import TrialFilter
 
@@ -56,3 +56,15 @@ def test_typographic_quotes_become_plain_ones() -> None:
     params = to_params(TrialFilter(condition="Alzheimer’s disease", sponsor="“Merck”"))
 
     assert (params["query.cond"], params["query.spons"]) == ("Alzheimer's disease", "Merck")
+
+
+def test_trials_that_only_mention_a_term_exclude_its_registered_fields() -> None:
+    criteria = TrialFilter(condition="breast cancer", phases=frozenset({Phase.PHASE3}))
+
+    params = mentioned_only_params(criteria, "condition")
+
+    assert params["query.cond"] == "breast cancer"
+    assert params["filter.advanced"] == "AREA[Phase](PHASE3) AND NOT (AREA[Condition](breast cancer))"
+    assert mentioned_only_params(TrialFilter(intervention="Keytruda"), "intervention")["filter.advanced"] == (
+        "NOT (AREA[InterventionName](Keytruda) OR AREA[InterventionOtherName](Keytruda))"
+    )
