@@ -6,11 +6,18 @@ import { Composer } from './components/Composer'
 import { MetaPanel } from './components/MetaPanel'
 import { NetworkGraph } from './components/NetworkGraph'
 import { VegaChart } from './components/VegaChart'
+import { type Entry, entryKey, loadHistory, remember, saveHistory } from './history'
 import { EXAMPLES, type StructuredFields } from './presets'
 
 type Call = (request: unknown, signal: AbortSignal) => Promise<VisualizationResponse>
+type Asked = Pick<Entry, 'key' | 'query' | 'fields'>
 
 const questionRequest = (query: string, fields: StructuredFields) => ({ query, ...fields })
+
+const describeFields = (fields: StructuredFields) =>
+  Object.entries(fields)
+    .map(([name, value]) => `${name.replace('_name', '')}: ${Array.isArray(value) ? value.join(', ') : value}`)
+    .join(' · ')
 
 const VIEW_LABELS: Record<string, string> = {
   bar_chart: 'Bars',
@@ -35,17 +42,26 @@ function viewLabel(view: Visualization, index: number): string {
 }
 
 export default function App() {
-  const [query, setQuery] = useState(EXAMPLES[0].query)
-  const [fields, setFields] = useState<StructuredFields>(EXAMPLES[0].fields ?? {})
-  const [planText, setPlanText] = useState('')
-  const [result, setResult] = useState<VisualizationResponse | null>(null)
-  const [error, setError] = useState<{ message: string; explained: boolean } | null>(null)
-  const [loading, setLoading] = useState(true)
+  // A reload shows the last answer of this session instead of asking again.
+  const [history, setHistory] = useState<Entry[]>(loadHistory)
+  const last: Entry | undefined = history[0]
+  const [activeKey, setActiveKey] = useState<string | null>(last?.key ?? null)
+  const [query, setQuery] = useState(last?.query ?? EXAMPLES[0].query)
+  const [fields, setFields] = useState<StructuredFields>(last?.fields ?? EXAMPLES[0].fields ?? {})
+  const [planText, setPlanText] = useState(last?.response ? JSON.stringify({ plan: last.response.meta.plan }, null, 2) : '')
+  const [result, setResult] = useState<VisualizationResponse | null>(last?.response ?? null)
+  const [error, setError] = useState<{ message: string; explained: boolean } | null>(
+    last?.notice ? { message: last.notice, explained: true } : null,
+  )
+  const [loading, setLoading] = useState(!last)
   const [selection, setSelection] = useState<Selection | null>(null)
   const [showRaw, setShowRaw] = useState(false)
   const [viewIndex, setViewIndex] = useState(0)
   const [options, setOptions] = useState<SearchOptions | null>(null)
   const inFlight = useRef<AbortController | null>(null)
+  const restored = useRef(history.length > 0)
+
+  useEffect(() => saveHistory(history), [history])
 
   // Choices for the filter fields; without them the fields still accept free text.
   useEffect(() => {
@@ -57,7 +73,7 @@ export default function App() {
   }, [])
 
   // State changes only once the response arrives; a newer request aborts the older one.
-  const send = useCallback((call: Call, request: unknown) => {
+  const send = useCallback((call: Call, request: unknown, asked?: Asked) => {
     inFlight.current?.abort()
     const controller = new AbortController()
     inFlight.current = controller
@@ -67,12 +83,17 @@ export default function App() {
         setViewIndex(0)
         setPlanText(JSON.stringify({ plan: response.meta.plan }, null, 2))
         setError(null)
+        if (asked) setHistory((h) => remember(h, { ...asked, response }))
       })
       .catch((e: unknown) => {
         if (!controller.signal.aborted) {
           // The previous chart answered another question; keeping it under this message misleads.
+          const message = e instanceof Error ? e.message : String(e)
+          const explained = e instanceof ApiError && !!e.code
           setResult(null)
-          setError({ message: e instanceof Error ? e.message : String(e), explained: e instanceof ApiError && !!e.code })
+          setError({ message, explained })
+          // Explained answers (refusals, unknown trials) are answers too; failures are retried.
+          if (asked && explained) setHistory((h) => remember(h, { ...asked, notice: message }))
         }
       })
       .finally(() => {
@@ -80,17 +101,34 @@ export default function App() {
       })
   }, [])
 
-  // Answer the first example on load; the initial state already says "loading".
+  // Answer the first example on a first visit; the initial state already says "loading".
   useEffect(() => {
-    send(askQuestion, questionRequest(EXAMPLES[0].query, EXAMPLES[0].fields ?? {}))
+    if (restored.current) return
+    const { query, fields = {} } = EXAMPLES[0]
+    send(askQuestion, questionRequest(query, fields), { key: entryKey(query, fields), query, fields })
     return () => inFlight.current?.abort()
   }, [send])
 
-  const start = (call: Call, request: unknown) => {
+  const start = (call: Call, request: unknown, asked?: Asked) => {
     setLoading(true)
     setError(null)
     setSelection(null)
-    send(call, request)
+    setActiveKey(asked?.key ?? null)
+    send(call, request, asked)
+  }
+
+  /** Shows a stored answer: no planning, no query. */
+  const show = (entry: Entry) => {
+    inFlight.current?.abort()
+    setLoading(false)
+    setActiveKey(entry.key)
+    setQuery(entry.query)
+    setFields(entry.fields)
+    setResult(entry.response ?? null)
+    setError(entry.notice ? { message: entry.notice, explained: true } : null)
+    setViewIndex(0)
+    setSelection(null)
+    if (entry.response) setPlanText(JSON.stringify({ plan: entry.response.meta.plan }, null, 2))
   }
 
   const showTrial = (nctId: string) => {
@@ -100,7 +138,12 @@ export default function App() {
   }
 
   const ask = (text = query, structured = fields) => {
-    if (text.trim()) start(askQuestion, questionRequest(text.trim(), structured))
+    const question = text.trim()
+    if (!question) return
+    const key = entryKey(question, structured)
+    const known = history.find((entry) => entry.key === key)
+    if (known) show(known)
+    else start(askQuestion, questionRequest(question, structured), { key, query: question, fields: structured })
   }
 
   const choose = (index: number) => {
@@ -126,6 +169,28 @@ export default function App() {
       <aside>
         <h1>Cheiron</h1>
         <p className="muted">Questions about ClinicalTrials.gov, answered with charts</p>
+
+        {history.length > 0 && (
+          <>
+            <h2>
+              Recent{' '}
+              <button type="button" className="link small" onClick={() => setHistory([])}>
+                clear
+              </button>
+            </h2>
+            <ol className="presets recent">
+              {history.map((entry) => (
+                <li key={entry.key}>
+                  <button className={entry.key === activeKey ? 'active' : ''} onClick={() => show(entry)}>
+                    {entry.query}
+                    {Object.keys(entry.fields).length > 0 && <span className="muted"> ({describeFields(entry.fields)})</span>}
+                    {entry.notice && <span className="muted"> · no chart</span>}
+                  </button>
+                </li>
+              ))}
+            </ol>
+          </>
+        )}
 
         <h2>Example questions</h2>
         <ol className="presets">

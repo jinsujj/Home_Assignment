@@ -402,6 +402,23 @@ Effect: a repeated or related question on the same cohort (phase, then start yea
 serialization code for no shared-state benefit, and it would implement the same port if the
 API were scaled out.
 
+### Answering a repeated question without the LLM
+
+Measured on "Which drugs are combined with pembrolizumab?": the first answer took 9.3 s, and
+each repeat 2.3 s, of which 1.4–3.2 s was the planner while the data came from cache in 0.2 s.
+Two caches remove that:
+
+- `CachingPlanner` (a `QueryPlanner` decorator) keeps drafts keyed by everything the model
+  sees: the question (ignoring case, spacing and a trailing "?"), the structured fields, the
+  correction feedback, and today's date (which resolves "in the last 5 years"). A repeat now
+  takes 0.22 s, and identical questions get identical plans.
+- The demo keeps this session's answers (like a chat assistant): a "Recent" list shows them
+  instantly without any request, asking a known question again reuses its answer, and a
+  reload restores the last one. They live in `sessionStorage`, as answers reflect the
+  registry's data of the day.
+
+A reworded question still costs one planner call (~2 s).
+
 ### Aggregating on our side, with a cap
 
 The API's `/stats/field/values` endpoint only reports statistics over *all* studies and accepts
@@ -601,14 +618,15 @@ backend/
       inbound/http/                  FastAPI routes and Pydantic schemas
       outbound/openai_planner.py     QueryPlanner on OpenAI structured outputs, planner instructions
       outbound/ctgov/                ClinicalTrials.gov client, query params, ACL mappers (studies, results)
-      outbound/caching.py            TrialSource decorator keyed to the data snapshot
+      outbound/caching.py            decorators: registry data keyed to the data snapshot; planner drafts
     main.py                        composition root
   tests/                           unit, HTTP, cache and planner tests; recorded fixtures;
                                    live API checks (-m live); planner evaluation (-m llm)
   Dockerfile
 frontend/                          React + TypeScript (Vite): generic spec renderer
   src/charts/toVegaLite.ts         spec → Vega-Lite (map shapes from world-atlas, bundled)
-  src/components/                  chart, network, citations, meta
+  src/components/                  chart, network, citations, meta, composer, filters
+  src/history.ts                   this session's answers, replayed without requests
   Dockerfile, nginx.conf           static build behind nginx, /api proxied to the API
 docker-compose.yml
 docs/                              API spec (v2.0.5), Korean domain glossary

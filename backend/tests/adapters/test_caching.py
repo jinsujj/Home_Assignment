@@ -1,8 +1,12 @@
+from datetime import date
+
 import pytest
 
-from cheiron.adapters.outbound.caching import CachingTrialSource
-from cheiron.application.ports import TrialSearchResult, TrialSourceError
+from cheiron.adapters.outbound.caching import CachingPlanner, CachingTrialSource
+from cheiron.application.planning import Question, StructuredFields
+from cheiron.application.ports import PlannerError, TrialSearchResult, TrialSourceError
 from cheiron.domain.trial_filter import TrialFilter
+from tests.application.planning_factories import draft
 from tests.domain.factories import trial
 
 pytestmark = pytest.mark.anyio
@@ -182,3 +186,66 @@ async def test_posted_results_weigh_like_many_trials() -> None:
     await cache.search(PEMBRO, 100)
 
     assert [c[0] for c in inner.calls] == [PEMBRO, "results", PEMBRO]
+
+
+# --- CachingPlanner ---------------------------------------------------------------------------
+
+
+class CountingPlanner:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, tuple[str, ...]]] = []
+        self.fail = False
+
+    async def draft(self, question, feedback=()):
+        self.calls.append((question.text, tuple(feedback)))
+        if self.fail:
+            raise PlannerError("down")
+        return draft(interpretation=f"draft {len(self.calls)}")
+
+
+class Today:
+    def __init__(self) -> None:
+        self.value = date(2026, 10, 13)
+
+    def __call__(self) -> date:
+        return self.value
+
+
+async def test_the_same_question_is_planned_once() -> None:
+    inner = CountingPlanner()
+    planner = CachingPlanner(inner)
+
+    first = await planner.draft(Question("Which drugs are combined with pembrolizumab?"))
+    again = await planner.draft(Question("  which drugs are combined with PEMBROLIZUMAB "))
+
+    assert again is first
+    assert len(inner.calls) == 1
+
+
+async def test_fields_feedback_and_date_are_part_of_the_question() -> None:
+    inner, today = CountingPlanner(), Today()
+    planner = CachingPlanner(inner, today=today)
+    question = Question("How has this drug changed over time?")
+
+    await planner.draft(question)
+    await planner.draft(Question(question.text, StructuredFields(drug_name="Pembrolizumab")))
+    await planner.draft(question, ["count_by requires dimension."])
+    await planner.draft(question, ["count_by requires dimension."])
+    today.value = date(2026, 10, 14)  # "in the last 5 years" may now mean other years
+    await planner.draft(question)
+
+    assert len(inner.calls) == 4
+
+
+async def test_planner_failures_are_not_cached_and_old_plans_are_evicted() -> None:
+    inner = CountingPlanner()
+    planner = CachingPlanner(inner, max_plans=2)
+    inner.fail = True
+    with pytest.raises(PlannerError):
+        await planner.draft(Question("a"))
+    inner.fail = False
+
+    for text in ("a", "b", "c", "a"):
+        await planner.draft(Question(text))
+
+    assert [text for text, _ in inner.calls] == ["a", "a", "b", "c", "a"]

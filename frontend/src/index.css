@@ -87,6 +87,18 @@ aside {
   background: var(--bg);
 }
 
+.presets button.active {
+  border-color: var(--accent);
+  background: #eef3fd;
+}
+
+button.link.small {
+  margin: 0 0 0 4px;
+  font-size: 11px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
 .plan-editor textarea {
   width: 100%;
   min-height: 220px;

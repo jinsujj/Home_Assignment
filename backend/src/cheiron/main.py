@@ -17,7 +17,7 @@ from fastapi import FastAPI
 from openai import AsyncOpenAI
 
 from cheiron.adapters.inbound.http.api import create_app
-from cheiron.adapters.outbound.caching import CachingTrialSource
+from cheiron.adapters.outbound.caching import CachingPlanner, CachingTrialSource
 from cheiron.adapters.outbound.ctgov.client import CtGovTrialSource
 from cheiron.adapters.outbound.openai_planner import OpenAIPlanner
 from cheiron.application.options import SearchOptionsProvider
@@ -36,10 +36,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.planner = None
         if os.environ.get("OPENAI_API_KEY"):
             client = await stack.enter_async_context(AsyncOpenAI())
-            app.state.planner = OpenAIPlanner(
-                client,
-                model=os.environ.get("OPENAI_MODEL") or DEFAULT_MODEL,
-                reasoning_effort=os.environ.get("OPENAI_REASONING_EFFORT", "low") or None,
+            app.state.planner = CachingPlanner(
+                OpenAIPlanner(
+                    client,
+                    model=os.environ.get("OPENAI_MODEL") or DEFAULT_MODEL,
+                    reasoning_effort=os.environ.get("OPENAI_REASONING_EFFORT", "low") or None,
+                )
             )
         yield
 
