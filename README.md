@@ -25,6 +25,45 @@ with every bar, point, node and link citing the trial records behind it.
 The reasoning and measurements behind each decision are in [docs/design.md](docs/design.md);
 five example runs with their actual JSON are [below](#example-runs).
 
+## One question, from the user's side
+
+![Asking a question, reading the answer, opening its sources, the AI check and a follow-up](docs/images/cheiron-demo.gif)
+
+<sub>Recorded on the demo with the registry snapshot of 2026-10-13: a question, the written answer and
+its sources, a bar's citations, the AI check on them, and a suggested follow-up.</sub>
+
+The demo (<http://localhost:8080>) follows the way a researcher works with a question: ask,
+read, check, refine. Each step was designed to give an answer the user can trust without
+leaving the page.
+
+1. **Ask in plain words.** "Compare phases for trials involving Keytruda vs Opdivo." The page
+   shows how the question was understood ("Understood as …"), the chart, and tabs with other
+   views of the same numbers (a 100% stack, a heatmap; a world map when the answer is countries).
+2. **Read the answer, not only the chart.** A few sentences answer the question above the chart,
+   e.g. that Phase 2 is the largest group for both drugs, with 1,777 Keytruda and 1,164 Opdivo
+   trials. Every number was checked against the data, and each sentence's "sources" open the
+   bars it comes from.
+3. **Click any bar, point, node or link to see why.** The citation panel lists the trials behind
+   it, each with the registered field and value that put it there and the sentence of the record
+   that names the drug or condition, linked to ClinicalTrials.gov. "List the other trials" goes
+   past the first five, 20 at a time.
+4. **Let AI read the trials.** The registry's search also returns trials that only mention a
+   drug. "Ask AI what Keytruda is to these trials" reads each record and says whether the drug is
+   studied, given alongside, an eligibility condition or background, quoting the record; a quote
+   not found in the record is not accepted.
+5. **Keep going without retyping.** "Ask next" offers follow-ups that are already planned ("Only
+   recruiting trials", "By country instead"), or the user types one ("only phase 3"); a chip over
+   the question box shows that it refines the last answer, and filters kept from earlier
+   questions are listed.
+6. **Trust the numbers.** Counts beyond the 5,000-trial sample are exact, each bar linking to the
+   API request that reproduces it; the data snapshot is shown, and Recent reopens earlier answers
+   at once, asking again only when the registry has published new data.
+
+The same flow works for trends, maps, networks (drugs combined or compared, sponsors leading or
+collaborating) and a single trial's posted results with their confidence intervals. Behind every
+step is one rule: the LLM interprets and writes, code computes and checks
+([How it works](#how-it-works)).
+
 ## Quick start
 
 ```bash
