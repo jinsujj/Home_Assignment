@@ -72,6 +72,7 @@ async def visualize_question(
         query=body.query,
         interpretation=answer.interpretation,
         planning_notes=answer.notes,
+        all_citation_ids=body.all_citation_ids,
     )
 
 
@@ -86,7 +87,7 @@ async def run_structured_plan(
     body: PlanRequest, source: Annotated[Registry, Depends(trial_source)]
 ) -> VisualizationResponse:
     result = await run_plan(body.plan.to_domain(), source, body.max_trials_per_cohort)
-    return VisualizationResponse.of(body.plan, result)
+    return VisualizationResponse.of(body.plan, result, all_citation_ids=body.all_citation_ids)
 
 
 def create_app(lifespan: Callable[[FastAPI], AbstractAsyncContextManager[None]] | None = None) -> FastAPI:

@@ -73,8 +73,10 @@ async def test_runs_a_plan_and_returns_spec_with_citations_and_meta() -> None:
                         "title": "Title of NCT1",
                         "url": "https://clinicaltrials.gov/study/NCT1",
                         "evidence": [{"field": "protocolSection.designModule.phases", "value": "PHASE2"}],
+                        "excerpt": "phases: PHASE2",
                     }
                 ],
+                "nct_ids": None,
             },
         }
     ]
@@ -337,3 +339,16 @@ async def test_responses_carry_alternative_views_with_their_notes() -> None:
     assert donut["data"][0]["share"] == 100.0
     assert donut["data"][0]["citations"]["total"] == 1
     assert donut["notes"][0] == "Each slice is its share of the counts in the bar chart."
+
+
+async def test_every_contributing_trial_is_listed_on_request() -> None:
+    source = FakeSource([trial(f"NCT{i}", phases=(Phase.PHASE2,)) for i in range(7)])
+    plan = {"kind": "count_by", "cohorts": [PEMBRO], "dimension": "phase"}
+
+    response = await client_for(source).post("/api/plans", json={"plan": plan, "all_citation_ids": True})
+
+    body = response.json()
+    for view in [body["visualization"], *body["alternatives"]]:
+        cited = view["data"][0]["citations"]
+        assert (cited["total"], len(cited["items"])) == (7, 5)
+        assert cited["nct_ids"] == [f"NCT{i}" for i in range(7)]

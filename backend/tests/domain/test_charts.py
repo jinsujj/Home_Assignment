@@ -54,9 +54,10 @@ def test_counts_by_phase_in_clinical_order_with_citations() -> None:
     assert viz.data[1]["citations"] == Citations(
         2,
         (
-            Citation("NCT1", "Title of NCT1", "https://clinicaltrials.gov/study/NCT1", (Evidence(PHASES, "PHASE2"),)),
-            Citation("NCT2", "Title of NCT2", "https://clinicaltrials.gov/study/NCT2", (Evidence(PHASES, "PHASE2"),)),
+            Citation("NCT1", "Title of NCT1", "https://clinicaltrials.gov/study/NCT1", (Evidence(PHASES, "PHASE2"),), "phases: PHASE2"),
+            Citation("NCT2", "Title of NCT2", "https://clinicaltrials.gov/study/NCT2", (Evidence(PHASES, "PHASE2"),), "phases: PHASE2"),
         ),
+        ("NCT1", "NCT2"),
     )
     assert "1 of 5 trials have no registered phase and are not shown." in viz.notes
     assert any("counted once under each" in n for n in viz.notes)
@@ -68,6 +69,7 @@ def test_citations_are_capped_but_keep_the_total() -> None:
     viz = build_visualization(CountBy((PEM,), Dimension.PHASE), {"Pembrolizumab": trials}, max_citations=2)
 
     assert viz.data[0]["citations"].total == 4
+    assert viz.data[0]["citations"].nct_ids == ("NCT0", "NCT1", "NCT2", "NCT3")
     assert cited_ids(viz.data[0]["citations"]) == ["NCT0", "NCT1"]
 
 
@@ -209,6 +211,7 @@ def test_drug_network_weights_edges_by_shared_trials() -> None:
         Evidence(INTERVENTION_NAME, "A"),
         Evidence(INTERVENTION_NAME, "b"),
     )
+    assert viz.data["edges"][0]["citations"].items[1].excerpt == "interventions.name: A; interventions.name: b"
     assert set(viz.encoding) == {
         "node_id", "node_label", "node_size", "node_color", "node_shape",
         "edge_source", "edge_target", "edge_weight", "edge_strength",

@@ -35,11 +35,15 @@ export interface Citation {
   title: string
   url: string
   evidence: Evidence[]
+  /** The evidence as one line of registered text, e.g. "phases: PHASE3". */
+  excerpt: string
 }
 
 export interface Citations {
   total: number
   items: Citation[]
+  /** Every contributing NCT ID, when the request sets all_citation_ids; null otherwise. */
+  nct_ids: string[] | null
 }
 
 export type Row = Record<string, unknown> & { citations: Citations }

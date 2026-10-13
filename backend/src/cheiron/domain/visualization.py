@@ -59,10 +59,13 @@ class Citation:
     title: str
     url: str
     evidence: tuple[Evidence, ...]
+    excerpt: str
+    """The evidence as one line of registered text, e.g. "phases: PHASE3"."""
 
     @classmethod
     def of(cls, nct_id: str, title: str, evidence: tuple[Evidence, ...]) -> Citation:
-        return cls(nct_id, title, STUDY_URL.format(nct_id=nct_id), evidence)
+        excerpt = "; ".join(f"{_short_field(e.field)}: {e.value}" for e in evidence)
+        return cls(nct_id, title, STUDY_URL.format(nct_id=nct_id), evidence, excerpt)
 
 
 @dataclass(frozen=True)
@@ -71,6 +74,14 @@ class Citations:
 
     total: int
     items: tuple[Citation, ...]
+    nct_ids: tuple[str, ...] | None = None
+    """Every contributing trial's NCT ID; responses include it on request."""
+
+
+def _short_field(field: str) -> str:
+    """"protocolSection.designModule.phases" -> "phases"; "...interventions.name" -> "interventions.name"."""
+    parts = field.split(".")
+    return parts[-1] if len(parts) < 2 or parts[-2].endswith("Module") else ".".join(parts[-2:])
 
 
 @dataclass(frozen=True)

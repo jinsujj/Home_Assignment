@@ -22,7 +22,7 @@ def build_correlation(plan: Correlation, trials: Sequence[Trial]) -> Visualizati
                 "title": trial.title,
                 plan.x.value: x[0],
                 plan.y.value: y[0],
-                "citations": Citations(1, (Citation.of(trial.nct_id, trial.title, evidence),)),
+                "citations": Citations(1, (Citation.of(trial.nct_id, trial.title, evidence),), (trial.nct_id,)),
             }
         )
 

@@ -58,7 +58,11 @@ class Bucket:
         return self._labels.most_common(1)[0][0]
 
     def citations(self, max_items: int) -> Citations:
-        return Citations(total=self.count, items=tuple(self._citations[:max_items]))
+        return Citations(
+            total=self.count,
+            items=tuple(self._citations[:max_items]),
+            nct_ids=tuple(dict.fromkeys(c.nct_id for c in self._citations)),
+        )
 
 
 def cohort_suffix(cohorts: tuple[Cohort, ...]) -> str:

@@ -68,7 +68,7 @@ def _outcomes(plan: TrialResults, results: PostedResults, name: str) -> Visualiz
                     "value": value.value,
                     "lower": lower,
                     "upper": upper,
-                    "citations": Citations(1, (Citation.of(results.nct_id, results.title, tuple(evidence)),)),
+                    "citations": Citations(1, (Citation.of(results.nct_id, results.title, tuple(evidence)),), (results.nct_id,)),
                 }
             )
             if value.value is None:
@@ -145,7 +145,7 @@ def _adverse_events(results: PostedResults, name: str) -> Visualization:
                     "percent": round(100 * e.affected / e.at_risk, 1),
                     "affected": e.affected,
                     "at_risk": e.at_risk,
-                    "citations": Citations(1, (Citation.of(results.nct_id, results.title, evidence),)),
+                    "citations": Citations(1, (Citation.of(results.nct_id, results.title, evidence),), (results.nct_id,)),
                 }
             )
     encoding = {

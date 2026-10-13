@@ -5,6 +5,7 @@ LLM planner's output schema, so field descriptions are written for both readers.
 Domain invariants (e.g. split_by with several cohorts) surface as 422 validation errors.
 """
 
+import dataclasses
 from collections.abc import Sequence
 from typing import Annotated, Any, Literal, Self
 
@@ -28,7 +29,7 @@ from cheiron.domain.analysis import (
 )
 from cheiron.domain.trial import Phase, Status, StudyType
 from cheiron.domain.trial_filter import TrialFilter
-from cheiron.domain.visualization import STUDY_URL, Channel, ChartType
+from cheiron.domain.visualization import STUDY_URL, Channel, ChartType, Citations
 
 MAX_TRIALS_LIMIT = 10_000
 
@@ -203,6 +204,9 @@ class PlanRequest(_Schema):
         le=MAX_TRIALS_LIMIT,
         description="Trials fetched and analyzed per cohort; larger result sets are truncated and flagged in meta.",
     )
+    all_citation_ids: bool = Field(
+        False, description="List every contributing NCT ID per datum in `citations.nct_ids` (otherwise null)."
+    )
 
 
 class VisualizeRequest(_Schema):
@@ -221,6 +225,9 @@ class VisualizeRequest(_Schema):
         None, pattern=r"^NCT\d{8}$", description="For a single trial's results: use this trial, e.g. to pick an alternative."
     )
     max_trials_per_cohort: int = Field(DEFAULT_MAX_TRIALS, ge=1, le=MAX_TRIALS_LIMIT)
+    all_citation_ids: bool = Field(
+        False, description="List every contributing NCT ID per datum in `citations.nct_ids` (otherwise null)."
+    )
 
     @model_validator(mode="after")
     def _check_years(self) -> Self:
@@ -313,12 +320,14 @@ class VisualizationResponse(BaseModel):
         query: str | None = None,
         interpretation: str | None = None,
         planning_notes: Sequence[str] = (),
+        all_citation_ids: bool = False,
     ) -> Self:
         viz = result.visualization
+        shown = (lambda data: data) if all_citation_ids else _without_citation_ids
         return cls(
-            visualization=VisualizationOut(type=viz.type, title=viz.title, encoding=viz.encoding, data=viz.data),
+            visualization=VisualizationOut(type=viz.type, title=viz.title, encoding=viz.encoding, data=shown(viz.data)),
             alternatives=[
-                ViewOut(type=v.type, title=v.title, encoding=v.encoding, data=v.data, notes=list(v.notes))
+                ViewOut(type=v.type, title=v.title, encoding=v.encoding, data=shown(v.data), notes=list(v.notes))
                 for v in result.alternatives
             ],
             meta=Meta(
@@ -344,3 +353,15 @@ def _trial_meta(result: PlanResult) -> TrialMeta | None:
             for c in result.trial.alternatives
         ],
     )
+
+
+def _without_citation_ids(data: list[dict[str, Any]] | dict[str, list[dict[str, Any]]]) -> Any:
+    """Rows (or nodes and edges) with `citations.nct_ids` left out, to keep default responses small."""
+
+    def row(r: dict[str, Any]) -> dict[str, Any]:
+        cited = r.get("citations")
+        return r | {"citations": dataclasses.replace(cited, nct_ids=None)} if isinstance(cited, Citations) else r
+
+    if isinstance(data, dict):
+        return {part: [row(r) for r in rows] for part, rows in data.items()}
+    return [row(r) for r in data]

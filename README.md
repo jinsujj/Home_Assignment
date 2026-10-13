@@ -88,6 +88,7 @@ cd ../frontend && npm run build && npm run lint   # type-check, build, lint
 | `start_year`, `end_year` | integer 1900–2100 | optional; trials starting in `[start_year, end_year]`; start ≤ end |
 | `nct_id` | `NCT` + 8 digits | optional; for a single trial's results, use this trial (e.g. an alternative listed in `meta.trial`) |
 | `max_trials_per_cohort` | integer 1–10,000 | default 5,000 |
+| `all_citation_ids` | boolean | default `false`; list every contributing NCT ID per datum in `citations.nct_ids` |
 
 Structured fields apply to every cohort and take precedence over what the planner extracted;
 the question can refer to them ("this drug"). `meta.notes` says when they were applied, and the
@@ -133,6 +134,7 @@ least one site in that country (for pembrolizumab in South Korea, 335 of 389 are
 | `filter.study_type` | `INTERVENTIONAL` \| `OBSERVATIONAL` \| `EXPANDED_ACCESS` | optional |
 | `filter.start_year_from`, `.start_year_to` | integer 1900–2100 | optional; from ≤ to |
 | `max_trials_per_cohort` | integer 1–10,000 | default 5,000; larger result sets are truncated and flagged |
+| `all_citation_ids` | boolean | default `false`; list every contributing NCT ID per datum in `citations.nct_ids` |
 
 Unknown fields, unknown enum values and invalid combinations (e.g. `split_by` with several
 cohorts) are rejected with `422` and an explanation; ClinicalTrials.gov failures return `502`.
@@ -191,24 +193,34 @@ trial's groups) and may add `y_lower` / `y_upper` channels: the posted interval 
 draw as error bars; a value posted as "NA" (e.g. a median not reached) is `null`. `meta.trial`
 names the trial (`nct_id`, `title`, `url`) and other trials the name matched (`alternatives`).
 
-Every row, node and edge carries `citations`:
+Every row, node and edge carries `citations` (here the "Phase 3" bar for pembrolizumab):
 
 ```json
-"citations": {
-  "total": 1777,
-  "items": [
-    { "nct_id": "NCT03044730",
-      "title": "Pembrolizumab and Capecitabine in Treating Patients With ...",
-      "url": "https://clinicaltrials.gov/study/NCT03044730",
-      "evidence": [ { "field": "protocolSection.designModule.phases", "value": "PHASE2" } ] }
-  ]
-}
+{ "phase": "Phase 3", "trial_count": 369,
+  "citations": {
+    "total": 369,
+    "items": [
+      { "nct_id": "NCT04003636",
+        "title": "Pembrolizumab (MK-3475) Plus Gemcitabine/Cisplatin ... (KEYNOTE-966)",
+        "url": "https://clinicaltrials.gov/study/NCT04003636",
+        "evidence": [ { "field": "protocolSection.designModule.phases", "value": "PHASE3" } ],
+        "excerpt": "phases: PHASE3" }
+    ],
+    "nct_ids": null } }
 ```
 
 `total` is the number of trials behind the datum; `items` spells out the first few (default 5).
 `evidence` names the field of the API's study JSON and the value exactly as registered that put
-the trial into this datum (two entries for an edge, one per endpoint). `notes` lists assumptions
-and caveats in plain sentences (multi-valued counting, missing values, top-N cut-offs, binning).
+the trial into this datum (two entries for an edge, one per endpoint; value and interval limits
+for a posted result); `excerpt` is the same evidence as one line of text, the shape the
+assignment's example uses (`citations[].{nct_id, excerpt}`). `nct_ids` lists every
+contributing trial when the request sets `all_citation_ids`, and is `null` otherwise.
+`notes` lists assumptions and caveats in plain sentences (multi-valued counting, missing
+values, top-N cut-offs, binning).
+
+Full lists are opt-in because of size, measured for pembrolizumab: the phase chart grows from
+21 KB to 114 KB (each alternative view repeats its lists) and the drug network from 1,037 KB
+to 1,268 KB. `excerpt` itself adds 9% (bar chart) to 17% (network) to a default response.
 
 ## Key design decisions and trade-offs
 
