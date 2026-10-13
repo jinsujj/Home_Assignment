@@ -43,7 +43,11 @@ async def test_registry_category_counts_equal_our_own_aggregation() -> None:
         assert not result.truncated
         for dimension in COUNTABLE_AREAS:
             ours = Counter(f.key for t in result.trials for f in dimension_facets(t, dimension))
-            assert await source.count_by(criteria, dimension, list(ours)) == dict(ours), dimension
+            counts = await source.count_by(criteria, dimension, list(ours))
+            assert {key: c.trials for key, c in counts.items()} == dict(ours), dimension
+        # The trials behind a count can be listed: as many as it counts.
+        key, count = next(iter(counts.items()))
+        assert len(await source.category_ids(criteria, dimension, key, limit=1000)) == count.trials
 
 
 async def test_trials_that_only_mention_a_drug_do_not_register_it() -> None:

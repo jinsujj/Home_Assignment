@@ -220,7 +220,12 @@ async def test_counts_each_category_with_one_count_only_request() -> None:
     criteria = TrialFilter(condition="breast cancer", phases=frozenset({Phase.PHASE2, Phase.PHASE3}))
     counts = await _source(handler).count_by(criteria, Dimension.PHASE, ["PHASE2", "PHASE3"])
 
-    assert counts == {"PHASE2": 10, "PHASE3": 20}
+    assert {k: c.trials for k, c in counts.items()} == {"PHASE2": 10, "PHASE3": 20}
+    # The query that reproduces a count lists the trials too (default pages, with titles).
+    reproduced = httpx.URL(counts["PHASE2"].query)
+    assert reproduced.path == "/api/v2/studies"
+    assert reproduced.params["filter.advanced"] == "AREA[Phase](PHASE2 OR PHASE3) AND AREA[Phase]PHASE2"
+    assert (reproduced.params["countTotal"], reproduced.params["fields"]) == ("true", "NCTId,BriefTitle")
     params = requests[0].url.params
     # The category is added to the cohort's own criteria, so a Phase 2/3 trial counts under both.
     assert params["filter.advanced"] == "AREA[Phase](PHASE2 OR PHASE3) AND AREA[Phase]PHASE2"
@@ -271,3 +276,14 @@ async def test_texts_of_cited_trials_are_fetched_by_id_in_chunks() -> None:
 
     assert [len(r.url.params["filter.ids"].split(",")) for r in requests] == [200, 50]
     assert texts["NCT00000007"] == {"protocolSection.identificationModule.briefTitle": ("Title NCT00000007",)}
+
+
+async def test_every_trial_behind_a_category_is_listed_up_to_a_limit() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.params["filter.advanced"] == "AREA[Phase]PHASE3"
+        return httpx.Response(200, json={"totalCount": 2, "studies": _ids("NCT1", "NCT2")})
+
+    source = _source(handler)
+
+    assert await source.category_ids(TrialFilter(), Dimension.PHASE, "PHASE3", limit=2) == ("NCT1", "NCT2")
+    assert await source.category_ids(TrialFilter(), Dimension.PHASE, "PHASE3", limit=1) is None

@@ -92,7 +92,9 @@ async def visualize_question(
     source: Annotated[Registry, Depends(trial_source)],
     planner: Annotated[QueryPlanner, Depends(query_planner)],
 ) -> VisualizationResponse:
-    answer = await visualize(body.to_question(), planner, source, body.max_trials_per_cohort)
+    answer = await visualize(
+        body.to_question(), planner, source, body.max_trials_per_cohort, all_citation_ids=body.all_citation_ids
+    )
     return VisualizationResponse.of(
         plan_from_domain(answer.plan),
         answer.result,
@@ -113,7 +115,9 @@ async def visualize_question(
 async def run_structured_plan(
     body: PlanRequest, source: Annotated[Registry, Depends(trial_source)]
 ) -> VisualizationResponse:
-    result = await run_plan(body.plan.to_domain(), source, body.max_trials_per_cohort)
+    result = await run_plan(
+        body.plan.to_domain(), source, body.max_trials_per_cohort, all_citation_ids=body.all_citation_ids
+    )
     return VisualizationResponse.of(body.plan, result, all_citation_ids=body.all_citation_ids)
 
 

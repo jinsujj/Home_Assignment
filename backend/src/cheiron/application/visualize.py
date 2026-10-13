@@ -54,8 +54,9 @@ async def visualize(
     planner: QueryPlanner,
     source: TrialSource,
     max_trials_per_cohort: int = DEFAULT_MAX_TRIALS,
+    all_citation_ids: bool = False,
 ) -> Answer:
     """Cohorts that match nothing are reported by run_plan's notes."""
     grounded = await plan_question(question, planner)
-    result = await run_plan(grounded.plan, source, max_trials_per_cohort)
+    result = await run_plan(grounded.plan, source, max_trials_per_cohort, all_citation_ids=all_citation_ids)
     return Answer(grounded.plan, grounded.interpretation, result, grounded.notes)

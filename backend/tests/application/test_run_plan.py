@@ -7,7 +7,7 @@ from cheiron.domain.analysis import Cohort, CoOccurrence, CountBy, Dimension, Di
 from cheiron.domain.results import PostedResults
 from cheiron.domain.trial import Phase, Status
 from cheiron.domain.trial_filter import TrialFilter
-from cheiron.domain.visualization import ChartType
+from cheiron.domain.visualization import ChartType, RegistryCount
 from tests.domain.factories import drug, trial
 
 pytestmark = pytest.mark.anyio
@@ -31,11 +31,16 @@ class FakeSource:
         self.count_calls: list[tuple[TrialFilter, Dimension, tuple[str, ...]]] = []
         self.include_sites: list[bool] = []
 
-    async def count_by(self, criteria: TrialFilter, dimension: Dimension, keys) -> dict[str, int] | None:
+    async def count_by(self, criteria: TrialFilter, dimension: Dimension, keys) -> dict[str, RegistryCount] | None:
         self.count_calls.append((criteria, dimension, tuple(keys)))
         if self.count_error:
             raise self.count_error
-        return self.counts.get(criteria)
+        counts = self.counts.get(criteria)
+        return {k: RegistryCount(n, f"query {k}") for k, n in counts.items()} if counts else None
+
+    async def category_ids(self, criteria: TrialFilter, dimension: Dimension, key: str, limit: int):
+        n = self.counts[criteria][key]
+        return tuple(f"NCT{key}{i}" for i in range(n)) if n <= limit else None
 
     async def data_version(self) -> str:
         return SNAPSHOT
@@ -256,3 +261,16 @@ async def test_without_free_text_filters_no_text_is_fetched() -> None:
     await run_plan(CountBy((by_phase,), Dimension.STATUS), source)
 
     assert source.text_calls == []
+
+
+async def test_every_trial_behind_registry_counts_is_listed_on_request() -> None:
+    source = FakeSource(
+        {A.filter: TrialSearchResult(_phases(Phase.PHASE1, Phase.PHASE2), total_count=40)},
+        counts={A.filter: {"PHASE1": 12, "PHASE2": 30}},
+    )
+
+    result = await run_plan(CountBy((A,), Dimension.PHASE), source, max_trials_per_cohort=2, all_citation_ids=True)
+
+    phase2 = result.visualization.data[1]["citations"]
+    assert (phase2.total, len(phase2.nct_ids), phase2.registry_query) == (30, 30, "query PHASE2")
+    assert len(phase2.items) == 1  # still the analyzed trial, with its evidence

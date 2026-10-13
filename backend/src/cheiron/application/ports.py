@@ -11,7 +11,7 @@ from cheiron.domain.membership import MentionRole
 from cheiron.domain.results import PostedResults
 from cheiron.domain.trial import Trial
 from cheiron.domain.trial_filter import TrialFilter
-from cheiron.domain.visualization import Evidence
+from cheiron.domain.visualization import Evidence, RegistryCount
 
 
 @dataclass(frozen=True)
@@ -37,11 +37,19 @@ class TrialSource(Protocol):
         """
         ...
 
-    async def count_by(self, criteria: TrialFilter, dimension: Dimension, keys: Sequence[str]) -> dict[str, int] | None:
+    async def count_by(
+        self, criteria: TrialFilter, dimension: Dimension, keys: Sequence[str]
+    ) -> dict[str, RegistryCount] | None:
         """How many of all trials matching `criteria` register each key under `dimension`.
 
         Unlike `search`, there is no cap. None when the source cannot count this dimension.
         """
+        ...
+
+    async def category_ids(
+        self, criteria: TrialFilter, dimension: Dimension, key: str, limit: int
+    ) -> tuple[str, ...] | None:
+        """NCT IDs of every trial count_by counted for `key`; None when there are more than `limit`."""
         ...
 
     async def mentioned_only(self, criteria: TrialFilter, criterion: str, limit: int) -> frozenset[str] | None:

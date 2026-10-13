@@ -8,6 +8,7 @@ from cheiron.application.ports import PlannerError, TrialCandidate, TrialSearchR
 from cheiron.domain.results import GroupValue, Outcome, OutcomeType, PostedResults
 from cheiron.domain.trial import InterventionType, Phase
 from cheiron.domain.trial_filter import TrialFilter
+from cheiron.domain.visualization import RegistryCount
 from tests.application.planning_factories import cohort, draft
 from tests.application.test_options import FakeVocabulary
 from tests.domain.factories import drug, trial
@@ -23,7 +24,10 @@ class FakeSource:
         self.calls: list[tuple[TrialFilter, int, bool]] = []
 
     async def count_by(self, criteria, dimension, keys):
-        return self.counts
+        return {k: RegistryCount(n, f"https://registry/{k}") for k, n in self.counts.items()} if self.counts else None
+
+    async def category_ids(self, criteria, dimension, key, limit):
+        return tuple(f"NCT{i:08d}" for i in range(self.counts[key]))
 
     async def data_version(self) -> str:
         return SNAPSHOT
@@ -93,6 +97,7 @@ async def test_runs_a_plan_and_returns_spec_with_citations_and_meta() -> None:
                     }
                 ],
                 "nct_ids": None,
+                "registry_query": None,
             },
         }
     ]
@@ -450,3 +455,17 @@ async def test_mentions_need_a_language_model() -> None:
     response = await client_for(FakeSource()).post("/api/mentions", json={"nct_ids": ["NCT00000001"], "names": ["x"]})
 
     assert response.status_code == 503
+
+
+async def test_registry_counts_cite_their_query_and_on_request_every_trial() -> None:
+    source = FakeSource([trial("NCT1", phases=(Phase.PHASE2,))], total=40, counts={"PHASE2": 31})
+    plan = {"kind": "count_by", "cohorts": [PEMBRO], "dimension": "phase"}
+    client = client_for(source)
+
+    default = (await client.post("/api/plans", json={"plan": plan, "max_trials_per_cohort": 1})).json()
+    listed = (await client.post("/api/plans", json={"plan": plan, "max_trials_per_cohort": 1, "all_citation_ids": True})).json()
+
+    cited = default["visualization"]["data"][0]["citations"]
+    assert (cited["total"], cited["registry_query"], cited["nct_ids"]) == (1, "https://registry/PHASE2", None)
+    cited = listed["visualization"]["data"][0]["citations"]
+    assert (cited["total"], len(cited["nct_ids"])) == (31, 31)

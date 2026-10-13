@@ -17,6 +17,7 @@ from cheiron.domain.visualization import (
     Citations,
     Evidence,
     FieldType,
+    RegistryCount,
     Visualization,
 )
 from tests.domain.factories import drug, sponsor, trial
@@ -448,7 +449,8 @@ def test_registry_totals_set_bar_heights_and_ranking_but_not_citations() -> None
     trials = [trial("NCT1", interventions=(drug("a"),)), trial("NCT2", interventions=(biological,)), trial("NCT3", interventions=(biological,))]
     plan = CountBy((PEM,), Dimension.INTERVENTION_TYPE, top_n=1)
 
-    viz = build_visualization(plan, {"Pembrolizumab": trials}, totals={"Pembrolizumab": {"DRUG": 900, "BIOLOGICAL": 50}})
+    totals = {"Pembrolizumab": {"DRUG": RegistryCount(900, "q1"), "BIOLOGICAL": RegistryCount(50, "q2")}}
+    viz = build_visualization(plan, {"Pembrolizumab": trials}, totals=totals)
 
     # Biological leads among the analyzed trials (2 to 1), Drug in the registry.
     assert [(r["intervention_type"], r["trial_count"], r["citations"].total) for r in viz.data] == [("Drug", 900, 1)]

@@ -3,6 +3,7 @@
 import asyncio
 from collections.abc import Sequence
 from typing import Any
+from urllib.parse import urlencode
 
 import httpx
 
@@ -24,6 +25,7 @@ from cheiron.adapters.outbound.ctgov.results_mapper import (
 from cheiron.application.ports import TermCount, TrialCandidate, TrialSearchResult, TrialSourceError, Vocabulary
 from cheiron.domain.analysis import Dimension
 from cheiron.domain.results import PostedResults
+from cheiron.domain.visualization import RegistryCount
 from cheiron.domain.trial_filter import TrialFilter
 
 BASE_URL = "https://clinicaltrials.gov/api/v2"
@@ -69,23 +71,35 @@ class CtGovTrialSource:
         trials = tuple(to_trial(s) for s in studies[:max_trials])
         return TrialSearchResult(trials=trials, total_count=total)
 
-    async def count_by(self, criteria: TrialFilter, dimension: Dimension, keys: Sequence[str]) -> dict[str, int] | None:
+    async def count_by(
+        self, criteria: TrialFilter, dimension: Dimension, keys: Sequence[str]
+    ) -> dict[str, RegistryCount] | None:
         """One count-only request per key. They go one at a time: measured, the API answers a
         burst of about 10 requests and then about one per second, rejecting the rest with 429."""
         if dimension not in COUNTABLE_AREAS:
             return None
         counts = {}
         for key in keys:
-            page = await self._get(
-                {**category_params(criteria, dimension, key), "countTotal": "true", "pageSize": "1", "fields": "NCTId"}
-            )
-            counts[key] = page["totalCount"]
+            params = category_params(criteria, dimension, key)
+            page = await self._get({**params, "countTotal": "true", "pageSize": "1", "fields": "NCTId"})
+            query = urlencode({**params, "countTotal": "true", "fields": "NCTId,BriefTitle"})
+            counts[key] = RegistryCount(page["totalCount"], f"{self._base_url}/studies?{query}")
         return counts
+
+    async def category_ids(
+        self, criteria: TrialFilter, dimension: Dimension, key: str, limit: int
+    ) -> tuple[str, ...] | None:
+        return await self._ids(category_params(criteria, dimension, key), limit)
 
     async def mentioned_only(self, criteria: TrialFilter, criterion: str, limit: int) -> frozenset[str] | None:
         if not essie_phrase(getattr(criteria, criterion) or ""):
             return frozenset()  # no such criterion to check
-        base = {**mentioned_only_params(criteria, criterion), "fields": "NCTId", "pageSize": str(MAX_PAGE_SIZE)}
+        ids = await self._ids(mentioned_only_params(criteria, criterion), limit)
+        return None if ids is None else frozenset(ids)
+
+    async def _ids(self, params: dict[str, str], limit: int) -> tuple[str, ...] | None:
+        """NCT IDs of every trial matching `params`, a page of 1,000 per request; None beyond `limit`."""
+        base = {**params, "fields": "NCTId", "pageSize": str(MAX_PAGE_SIZE)}
         page = await self._get({**base, "countTotal": "true"})
         if page["totalCount"] > limit:
             return None
@@ -93,7 +107,7 @@ class CtGovTrialSource:
         while token := page.get("nextPageToken"):
             page = await self._get({**base, "pageToken": token})
             ids += [s["protocolSection"]["identificationModule"]["nctId"] for s in page.get("studies", [])]
-        return frozenset(ids)
+        return tuple(ids)
 
     async def trial_texts(self, nct_ids: Sequence[str]) -> dict[str, dict[str, tuple[str, ...]]]:
         texts = {}

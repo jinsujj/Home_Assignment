@@ -49,6 +49,14 @@ export function CitationPanel({ selection, names }: Props) {
           {citations.total < count && ' (the analyzed ones; the count covers every matching trial)'}.
         </p>
       )}
+      {citations.registry_query && (
+        <p className="muted">
+          ClinicalTrials.gov counted these {count.toLocaleString()} trials:{' '}
+          <a href={citations.registry_query} target="_blank" rel="noreferrer">
+            reproduce the count and list them (API)
+          </a>
+        </p>
+      )}
       {names.length > 0 && citations.items.length > 0 && !verdicts && (
         <p>
           <button type="button" className="secondary small" onClick={judge} disabled={judging}>

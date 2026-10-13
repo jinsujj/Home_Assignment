@@ -48,6 +48,8 @@ export interface Citations {
   items: Citation[]
   /** Every contributing NCT ID, when the request sets all_citation_ids; null otherwise. */
   nct_ids: string[] | null
+  /** A ClinicalTrials.gov API request whose totalCount is the datum's count, when the registry counted it. */
+  registry_query: string | null
 }
 
 export type Row = Record<string, unknown> & { citations: Citations }

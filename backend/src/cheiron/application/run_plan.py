@@ -2,7 +2,7 @@
 
 import asyncio
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from cheiron.application.ports import Registry, TrialCandidate, TrialSearchResult, TrialSourceError
 from cheiron.application.trial_lookup import NoPostedResults, choose_trial
@@ -20,11 +20,13 @@ from cheiron.domain.membership import (
     memberships,
 )
 from cheiron.domain.trial_filter import TrialFilter
-from cheiron.domain.visualization import Visualization
+from cheiron.domain.visualization import RegistryCount, Visualization
 
 DEFAULT_MAX_TRIALS = 5000
 MAX_COUNT_REQUESTS = 20
 """Registry counts cost one request per category, and the API serves about one per second."""
+MAX_LISTED_TRIALS = 20_000
+"""Listing every trial behind registry counts costs a request per 1,000 (about 20 s at most)."""
 _REGISTERED_AS = {"intervention": "an intervention", "condition": "a condition", "sponsor": "a sponsor or collaborator"}
 
 
@@ -73,7 +75,9 @@ async def run_plan(
     source: Registry,
     max_trials_per_cohort: int = DEFAULT_MAX_TRIALS,
     max_citations: int = DEFAULT_MAX_CITATIONS,
+    all_citation_ids: bool = False,
 ) -> PlanResult:
+    """`all_citation_ids`: also list every trial behind registry counts (a request per 1,000)."""
     if isinstance(plan, TrialResults):
         return await _run_trial_results(plan, source)
 
@@ -83,6 +87,9 @@ async def run_plan(
         *(source.search(c.filter, max_trials_per_cohort, include_sites=include_sites) for c in cohorts)
     )
     totals = await _registry_counts(plan, results, source)
+    listing_notes = ()
+    if all_citation_ids and totals and isinstance(plan, CountBy):
+        listing_notes = await _list_counted_trials(plan, totals, source)
     by_cohort, mention_notes = await _memberships(cohorts, results, source, max_trials_per_cohort)
     # Trials that register the filtered terms come first, so they are the ones cited in full.
     trials = {
@@ -107,7 +114,7 @@ async def run_plan(
         for r in reports
         if r.truncated
     )
-    notes += mention_notes
+    notes += mention_notes + listing_notes
     notes += tuple(
         f"No trials match the filters{f' for {r.label}' if r.label else ''}; "
         "check the spelling or try a broader term."
@@ -175,9 +182,31 @@ async def _with_passages(
     }
 
 
+async def _list_counted_trials(
+    plan: CountBy, totals: dict[str, dict[str, RegistryCount]], source: Registry
+) -> tuple[str, ...]:
+    """Fills in the NCT IDs behind each registry count, in place, within MAX_LISTED_TRIALS."""
+    counted = sum(c.trials for counts in totals.values() for c in counts.values())
+    if counted > MAX_LISTED_TRIALS:
+        return (
+            f"Listing the {counted:,} trials behind the registry counts exceeds {MAX_LISTED_TRIALS:,}; "
+            "citations.nct_ids list the analyzed trials only, and citations.registry_query lists them all.",
+        )
+    filters = {c.label: c.filter for c in plan.cohorts}
+    try:
+        for label, counts in totals.items():
+            for key, count in counts.items():
+                ids = await source.category_ids(filters[label], plan.dimension, key, MAX_LISTED_TRIALS)
+                if ids is not None:
+                    counts[key] = replace(count, nct_ids=ids)
+    except TrialSourceError:
+        return ("Not every trial behind the registry counts could be listed; citations.registry_query lists them.",)
+    return ()
+
+
 async def _registry_counts(
     plan: AnalysisPlan, results: Sequence[TrialSearchResult], source: Registry
-) -> dict[str, dict[str, int]]:
+) -> dict[str, dict[str, RegistryCount]]:
     """Exact category counts for truncated cohorts, by cohort label, where the registry can count them.
 
     Categories are those of the analyzed trials. Without a split, the counts are one number per

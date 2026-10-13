@@ -83,6 +83,20 @@ class Citations:
     items: tuple[Citation, ...]
     nct_ids: tuple[str, ...] | None = None
     """Every contributing trial's NCT ID; responses include it on request."""
+    registry_query: str | None = None
+    """A ClinicalTrials.gov API request whose totalCount is the datum's count, when the registry
+    counted it (cohorts beyond the fetch cap)."""
+
+
+@dataclass(frozen=True)
+class RegistryCount:
+    """A category counted by the registry over every matching trial, not only the analyzed ones."""
+
+    trials: int
+    query: str
+    """A ClinicalTrials.gov API request whose totalCount is `trials`; its pages list them."""
+    nct_ids: tuple[str, ...] | None = None
+    """Every trial counted, when they were listed."""
 
 
 def _short_field(field: str) -> str:

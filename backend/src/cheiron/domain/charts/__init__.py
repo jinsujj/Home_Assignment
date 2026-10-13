@@ -8,7 +8,7 @@ from cheiron.domain.charts.correlation import build_correlation
 from cheiron.domain.charts.count_by import build_count_by
 from cheiron.domain.charts.distribution import build_distribution
 from cheiron.domain.trial import Trial
-from cheiron.domain.visualization import Visualization
+from cheiron.domain.visualization import RegistryCount, Visualization
 
 DEFAULT_MAX_CITATIONS = 5
 
@@ -17,7 +17,7 @@ def build_visualization(
     plan: AnalysisPlan,
     trials_by_cohort: Mapping[str, Sequence[Trial]],
     max_citations: int = DEFAULT_MAX_CITATIONS,
-    totals: Mapping[str, Mapping[str | int, int]] | None = None,
+    totals: Mapping[str, Mapping[str | int, RegistryCount]] | None = None,
 ) -> Visualization:
     """`trials_by_cohort` maps each cohort label of the plan to its trials.
 

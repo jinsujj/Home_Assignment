@@ -2,12 +2,13 @@
 
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
+from dataclasses import replace
 
 from cheiron.domain.analysis import Cohort, CountBy, Dimension
 from cheiron.domain.charts.common import DIMENSION_TITLES, TRIAL_COUNT, Bucket, cohort_suffix
 from cheiron.domain.facets import MULTI_VALUED, PHASE_ORDER, dimension_facets
 from cheiron.domain.trial import DateType, Trial
-from cheiron.domain.visualization import Channel, ChartType, Citations, Evidence, FieldType, Visualization
+from cheiron.domain.visualization import Channel, ChartType, Citations, Evidence, FieldType, RegistryCount, Visualization
 
 DEFAULT_TOP_N = 15
 HIGH_CARDINALITY = frozenset({Dimension.COUNTRY, Dimension.CONDITION, Dimension.INTERVENTION, Dimension.LEAD_SPONSOR})
@@ -19,7 +20,7 @@ def build_count_by(
     plan: CountBy,
     trials_by_cohort: Mapping[str, Sequence[Trial]],
     max_citations: int,
-    totals: Mapping[str, Mapping[Key, int]] | None = None,
+    totals: Mapping[str, Mapping[Key, RegistryCount]] | None = None,
 ) -> Visualization:
     """`totals`: registry counts per category for truncated cohorts (without a split); bars
     show them, while citations still come from the cohort's analyzed trials."""
@@ -54,11 +55,13 @@ def build_count_by(
             where = f" in {cohort.label}" if compare else ""
             notes.append(f"{skipped} of {len(trials)} trials{where} have no registered {missing} and are not shown.")
 
+    def registry(category: Key, key: Key | None) -> RegistryCount | None:
+        return totals.get(key if compare else plan.cohorts[0].label, {}).get(category)
+
     def count(category: Key, key: Key | None) -> int:
         """The registry's count for a truncated cohort, else the analyzed trials'."""
-        cohort = key if compare else plan.cohorts[0].label
-        if category in totals.get(cohort, {}):
-            return totals[cohort][category]
+        if counted := registry(category, key):
+            return counted.trials
         bucket = cells.get((category, key))
         return bucket.count if bucket else 0
 
@@ -97,6 +100,9 @@ def build_count_by(
                 row[series_field] = series_label(key)
             row["trial_count"] = count(category, key)
             row["citations"] = bucket.citations(max_citations) if bucket else Citations(0, ())
+            if counted := registry(category, key):
+                listed = {"nct_ids": counted.nct_ids, "total": len(counted.nct_ids)} if counted.nct_ids else {}
+                row["citations"] = replace(row["citations"], registry_query=counted.query, **listed)
             rows.append(row)
 
     encoding = {

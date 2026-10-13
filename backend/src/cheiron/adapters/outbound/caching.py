@@ -32,6 +32,7 @@ from cheiron.application.ports import (
 from cheiron.domain.analysis import Dimension
 from cheiron.domain.membership import MentionRole
 from cheiron.domain.results import PostedResults
+from cheiron.domain.visualization import RegistryCount
 from cheiron.domain.trial_filter import TrialFilter
 
 SITE_WEIGHT = 3  # site lists roughly triple a result's memory (measured)
@@ -70,11 +71,22 @@ class CachingTrialSource:
             lambda result: len(result.trials) * (SITE_WEIGHT if include_sites else 1),
         )
 
-    async def count_by(self, criteria: TrialFilter, dimension: Dimension, keys: Sequence[str]) -> dict[str, int] | None:
+    async def count_by(
+        self, criteria: TrialFilter, dimension: Dimension, keys: Sequence[str]
+    ) -> dict[str, RegistryCount] | None:
         return await self._cached(
             ("count_by", criteria, dimension, tuple(keys)),
             lambda: self._inner.count_by(criteria, dimension, keys),
             lambda _: COUNTS_WEIGHT,
+        )
+
+    async def category_ids(
+        self, criteria: TrialFilter, dimension: Dimension, key: str, limit: int
+    ) -> tuple[str, ...] | None:
+        return await self._cached(
+            ("category_ids", criteria, dimension, key, limit),
+            lambda: self._inner.category_ids(criteria, dimension, key, limit),
+            lambda ids: COUNTS_WEIGHT + len(ids or ()) // 1000,
         )
 
     async def mentioned_only(self, criteria: TrialFilter, criterion: str, limit: int) -> frozenset[str] | None:
