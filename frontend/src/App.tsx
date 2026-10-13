@@ -1,7 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ApiError, askQuestion, getOptions, getVersion, runPlan } from './api/client'
-import { resolvedViews } from './api/references'
-import type { NetworkData, SearchOptions, Selection, View, Visualization, VisualizationResponse } from './api/types'
+import { citationPointers, citationsAt, resolvedViews } from './api/references'
+import type {
+  Citations,
+  NetworkData,
+  SearchOptions,
+  Selection,
+  View,
+  Visualization,
+  VisualizationResponse,
+} from './api/types'
 import { CitationPanel } from './components/CitationPanel'
 import { Composer } from './components/Composer'
 import { MetaPanel } from './components/MetaPanel'
@@ -207,6 +215,24 @@ export default function App() {
   }
 
   const alternatives = useMemo(() => (result ? resolvedViews(result) : []), [result])
+  const pointers = useMemo(() => (result ? citationPointers(result) : new Map<Citations, string>()), [result])
+  // The same answer with every trial behind each datum listed; fetched once, when first wanted.
+  const listed = useRef<{ of: VisualizationResponse; answer: Promise<VisualizationResponse> } | null>(null)
+  const listTrials = useCallback(
+    (citations: Citations): Promise<string[]> | null => {
+      const pointer = pointers.get(citations)
+      if (!result || !pointer) return null
+      if (listed.current?.of !== result) {
+        const answer = runPlan({ plan: result.meta.plan, all_citation_ids: true }).catch((e: unknown) => {
+          listed.current = null // ask again next time
+          throw e
+        })
+        listed.current = { of: result, answer }
+      }
+      return listed.current.answer.then((full) => citationsAt(full, pointer)?.nct_ids ?? [])
+    },
+    [result, pointers],
+  )
   const views: (Visualization | View)[] = result ? [result.visualization, ...alternatives] : []
   const viz = views[viewIndex] ?? result?.visualization
 
@@ -357,6 +383,7 @@ export default function App() {
                   <CitationPanel
                     key={selection ? `${selection.label}|${selection.count}` : 'none'}
                     selection={selection}
+                    listTrials={listTrials}
                     names={
                       result.meta.cohorts.find((c) => c.label === (selection?.cohort ?? result.meta.cohorts[0]?.label))
                         ?.names ?? []

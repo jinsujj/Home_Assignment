@@ -277,7 +277,10 @@ Measured for pembrolizumab, a default phase chart is 32 KB, Keytruda vs Opdivo 5
 network 804 KB; before alternative views referred to the primary's citations, they were 54, 123
 and 2,081 KB. Responses are gzipped for clients that accept it (browsers do): 5 KB, 7 KB and
 65 KB. Full NCT ID lists are opt-in: with `all_citation_ids` the same answers are 85, 148 and
-915 KB (21, 37 and 99 KB gzipped).
+915 KB (21, 37 and 99 KB gzipped). The demo therefore asks for them only when the user wants
+the trials beyond the five cited in full: "List the other trials" in the citation panel runs the
+answer's plan again with `all_citation_ids` (served from cache in 0.05–0.3 s) and finds the same
+datum by its position in the response.
 
 ## Key design decisions and trade-offs
 
@@ -646,7 +649,8 @@ suggested elsewhere (drug, condition, sponsor), from `GET /api/options`; active 
 removable chips. For a single trial it shows the trial used, with links, and lets the user
 switch to another trial the name matched. Tabs above each chart switch between the answer's
 views (e.g. Bars / Map / Donut). Notes that count trials have a "show trials" link that lists
-them in the citation panel, and registry counts link to the API request that reproduces them. Refusals and "no posted results" appear as neutral notices, not
+them in the citation panel, and registry counts link to the API request that reproduces them.
+Beyond the five trials cited in full, "List the other trials" lists the rest by NCT ID. Refusals and "no posted results" appear as neutral notices, not
 errors, and replace the previous chart.
 
 Rendering knows nothing about questions: it maps `type` + `encoding` to Vega-Lite (bars with

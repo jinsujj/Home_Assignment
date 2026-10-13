@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { judgeMentions } from '../api/client'
-import type { MentionRole, MentionVerdict, Selection } from '../api/types'
+import type { Citations, MentionRole, MentionVerdict, Selection } from '../api/types'
 
 const ROLES: Record<MentionRole, string> = {
   studied: 'studied by the trial',
@@ -14,12 +14,17 @@ interface Props {
   selection: Selection | null
   /** What the cohort's filtered entity is called; empty when the cohort has no text filter. */
   names: string[]
+  /** Every trial behind the citations, beyond those cited in full; null when they cannot be listed. */
+  listTrials?: (citations: Citations) => Promise<string[]> | null
 }
 
-export function CitationPanel({ selection, names }: Props) {
+export function CitationPanel({ selection, names, listTrials }: Props) {
   const [verdicts, setVerdicts] = useState<Record<string, MentionVerdict> | null>(null)
   const [judging, setJudging] = useState(false)
   const [problem, setProblem] = useState<string | null>(null)
+  const [others, setOthers] = useState<string[] | null>(null)
+  const [listing, setListing] = useState(false)
+  const [listProblem, setListProblem] = useState<string | null>(null)
 
   if (!selection) {
     return <p className="hint">Click a bar, point, node or link to see the trials behind it.</p>
@@ -36,6 +41,18 @@ export function CitationPanel({ selection, names }: Props) {
       .then((found) => setVerdicts(Object.fromEntries(found.map((v) => [v.nct_id, v]))))
       .catch((e: unknown) => setProblem(e instanceof Error ? e.message : String(e)))
       .finally(() => setJudging(false))
+  }
+
+  const listOthers = () => {
+    const found = listTrials?.(citations)
+    if (!found) return
+    setListing(true)
+    setListProblem(null)
+    const cited = new Set(citations.items.map((c) => c.nct_id))
+    found
+      .then((ids) => setOthers(ids.filter((id) => !cited.has(id))))
+      .catch((e: unknown) => setListProblem(e instanceof Error ? e.message : String(e)))
+      .finally(() => setListing(false))
   }
 
   return (
@@ -112,6 +129,33 @@ export function CitationPanel({ selection, names }: Props) {
           </li>
         ))}
       </ul>
+      {citations.items.length < Math.max(citations.total, count) && listTrials && !others && (
+        <p>
+          <button type="button" className="link" onClick={listOthers} disabled={listing}>
+            {listing && <span className="spinner" aria-hidden="true" />}
+            <span>{listing ? 'Listing the trials…' : 'List the other trials'}</span>
+          </button>
+          {listProblem && <span className="ai-check-problem">{listProblem}</span>}
+        </p>
+      )}
+      {others && (
+        <div className="other-trials">
+          <p className="muted">
+            {others.length > 0
+              ? `${others.length.toLocaleString()} more trials, by NCT ID:`
+              : 'No other trials could be listed; the API link above lists them.'}
+          </p>
+          <ul>
+            {others.map((id) => (
+              <li key={id}>
+                <a href={`https://clinicaltrials.gov/study/${id}`} target="_blank" rel="noreferrer">
+                  {id}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   )
 }
