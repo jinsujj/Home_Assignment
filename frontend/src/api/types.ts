@@ -23,6 +23,8 @@ export interface Channel {
   order: (string | number)[] | null
   unit: string | null
   time_unit: string | null
+  /** null for a linear axis; 'symlog' for a log-like axis that keeps zeros. */
+  scale: 'symlog' | null
 }
 
 export interface Evidence {

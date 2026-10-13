@@ -1,4 +1,4 @@
-from cheiron.domain.analysis import Cohort, CoOccurrence, CountBy, Dimension, Distribution, Entity, Measure, TrialResults
+from cheiron.domain.analysis import Cohort, CoOccurrence, Correlation, CountBy, Dimension, Distribution, Entity, Measure, TrialResults
 from cheiron.domain.charts import build_visualization
 from cheiron.domain.charts.trial_results import build_trial_results
 from cheiron.domain.charts.views import alternative_views
@@ -122,3 +122,35 @@ def test_registry_country_names_map_to_iso_codes() -> None:
     assert iso_numeric("Burma") == "104"
     assert iso_numeric("Afghanistan") == "004"
     assert iso_numeric("Kosovo") is None
+
+
+def test_scatters_get_medians_by_fifths_of_x() -> None:
+    durations = [6, 6, 6, 12, 12, 18, 18, 24, 30, 36, 48, 60]
+    trials = [
+        trial(f"NCT{i}", enrollment=100 * (i + 1), start_date="2015-01", completion_date=f"{2015 + m // 12}-{m % 12 + 1:02d}")
+        for i, m in enumerate(durations)
+    ]
+    scatter = build_visualization(Correlation(PEM, Measure.DURATION_MONTHS, Measure.ENROLLMENT), {"Pembrolizumab": trials})
+
+    [medians] = alternative_views(scatter)
+
+    assert medians.type is ChartType.BAR
+    assert medians.title == "Median enrollment by duration from start to completion — Pembrolizumab"
+    # Quintile cuts at 6, 12, 24 and 36 months: nothing is below 6, so ties leave four groups.
+    assert [(r["range"], r["median"], r["trial_count"]) for r in medians.data] == [
+        ("6", 200, 3),
+        ("12–18", 550, 4),
+        ("24–30", 850, 2),
+        ("36–60", 1100, 3),
+    ]
+    assert medians.data[0]["citations"].nct_ids == ("NCT0", "NCT1", "NCT2")
+    assert medians.encoding["x"].order == ("6", "12–18", "24–30", "36–60")
+    assert medians.notes[0].startswith("The scatter's trials split into 4 groups")
+    assert any(n.startswith("Spearman rank correlation") for n in medians.notes)
+
+
+def test_small_scatters_get_no_medians() -> None:
+    trials = [trial(f"NCT{i}", enrollment=i + 1, start_date="2015-01", completion_date="2016-01") for i in range(9)]
+    scatter = build_visualization(Correlation(PEM, Measure.DURATION_MONTHS, Measure.ENROLLMENT), {"Pembrolizumab": trials})
+
+    assert alternative_views(scatter) == ()

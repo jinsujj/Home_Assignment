@@ -334,6 +334,35 @@ def test_scatter_has_one_cited_point_per_trial() -> None:
     assert "1 of 2 trials lack start year or duration from start to completion and are not shown." in viz.notes
 
 
+def _sized(enrollments: list[int], months: list[int]):
+    return [
+        trial(f"NCT{i}", enrollment=e, start_date="2015-01", completion_date=f"{2015 + m // 12}-{m % 12 + 1:02d}")
+        for i, (e, m) in enumerate(zip(enrollments, months, strict=True))
+    ]
+
+
+def test_scatter_states_its_rank_correlation_in_words() -> None:
+    plan = Correlation(PEM, Measure.DURATION_MONTHS, Measure.ENROLLMENT)
+
+    rising = build_visualization(plan, {"Pembrolizumab": _sized([10, 20, 15, 40], [6, 12, 18, 24])})
+    flat = build_visualization(plan, {"Pembrolizumab": _sized([30, 10, 10, 30], [6, 12, 18, 24])})
+
+    assert (
+        "Spearman rank correlation ρ = 0.80 over 4 trials: a strong positive association; "
+        "enrollment tends to rise as duration from start to completion rises." in rising.notes
+    )
+    assert "Spearman rank correlation ρ = 0.00 over 4 trials: no clear association between" in flat.notes[-1]
+
+
+def test_skewed_axes_are_drawn_log_like() -> None:
+    plan = Correlation(PEM, Measure.DURATION_MONTHS, Measure.ENROLLMENT)
+
+    viz = build_visualization(plan, {"Pembrolizumab": _sized([0, 50, 100, 2000], [6, 12, 18, 24])})
+
+    assert (viz.encoding["x"].scale, viz.encoding["y"].scale) == (None, "symlog")  # 2000 is 27 times the median 75
+    assert "Enrollment is drawn on a log-like (symlog) axis, as its largest value is 27 times its median; zeros stay on the axis." in viz.notes
+
+
 # --- Titles -------------------------------------------------------------------------------
 
 

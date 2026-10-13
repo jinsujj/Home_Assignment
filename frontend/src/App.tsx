@@ -34,10 +34,10 @@ const VIEW_LABELS: Record<string, string> = {
   forest_plot: 'Intervals',
 }
 
-/** Tab name for a view; alternatives sharing a type with the answer are named by their title. */
-function viewLabel(view: Visualization, index: number): string {
+/** Tab name for a view; an alternative drawn as a bar chart or time series is named by what it shows. */
+function viewLabel(view: Visualization, index: number, answer: Visualization): string {
   if (index > 0 && view.type === 'time_series') return 'Cumulative'
-  if (index > 0 && view.type === 'bar_chart') return 'Top links'
+  if (index > 0 && view.type === 'bar_chart') return answer.type === 'scatter_plot' ? 'Medians' : 'Top links'
   return VIEW_LABELS[view.type] ?? view.type
 }
 
@@ -282,7 +282,7 @@ export default function App() {
                           setSelection(null)
                         }}
                       >
-                        {viewLabel(view, index)}
+                        {viewLabel(view, index, result.visualization)}
                       </button>
                     ))}
                   </div>

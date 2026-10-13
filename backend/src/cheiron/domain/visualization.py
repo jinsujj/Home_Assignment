@@ -43,6 +43,8 @@ class Channel:
     """Category order to render in; None means data order."""
     unit: str | None = None
     time_unit: str | None = None
+    scale: str | None = None
+    """None for a linear axis; "symlog" for a log-like axis that keeps zeros."""
 
 
 @dataclass(frozen=True)

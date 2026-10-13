@@ -10,15 +10,20 @@ depends only on the primary's type and encoding, not on the question:
     time_series        -> cumulative time_series
     network_graph      -> heatmap (adjacency matrix) and bar_chart (strongest links)
     histogram          -> line_chart (cumulative distribution)
+    scatter_plot       -> bar_chart (median y per fifth of the trials by x)
 """
 
+import statistics
+from bisect import bisect_right
 from collections import defaultdict
 from typing import Any
 
 from cheiron.domain.geography import iso_numeric
-from cheiron.domain.visualization import Channel, ChartType, FieldType, Visualization
+from cheiron.domain.visualization import Channel, ChartType, Citations, FieldType, Visualization
 
 TOP_LINKS = 15
+MEDIAN_GROUPS = 5
+CITED_PER_GROUP = 5
 _MULTI_VALUED_NOTE = "counted once under each"
 
 
@@ -38,6 +43,8 @@ def alternative_views(primary: Visualization) -> tuple[Visualization, ...]:
             return _network_views(primary)
         case ChartType.HISTOGRAM:
             return (_cumulative_distribution(primary),)
+        case ChartType.SCATTER:
+            return _medians_by_range(primary)
     return ()
 
 
@@ -228,6 +235,51 @@ def _cumulative_distribution(primary: Visualization) -> Visualization:
         },
         points,
         tuple(notes),
+    )
+
+
+def _medians_by_range(primary: Visualization) -> tuple[Visualization, ...]:
+    """Answers "does y rise with x?" directly: trials split into fifths by x, median y of each."""
+    x, y = primary.encoding["x"], primary.encoding["y"]
+    rows = sorted(primary.data, key=lambda r: r[x.field])
+    if len(rows) < 2 * MEDIAN_GROUPS:
+        return ()
+    values = [r[x.field] for r in rows]
+    # Cut at the quintiles; equal values stay in one group, so groups can differ in size.
+    cuts = sorted({values[k * len(rows) // MEDIAN_GROUPS] for k in range(1, MEDIAN_GROUPS)})
+    groups: list[list[dict[str, Any]]] = [[] for _ in range(len(cuts) + 1)]
+    for row in rows:
+        groups[bisect_right(cuts, row[x.field])].append(row)
+
+    bars = []
+    for group in filter(None, groups):
+        low, high = group[0][x.field], group[-1][x.field]
+        cited = [c for r in group for c in r["citations"].items]
+        bars.append(
+            {
+                "range": f"{low:,}" if low == high else f"{low:,}–{high:,}",
+                "median": statistics.median(r[y.field] for r in group),
+                "trial_count": len(group),
+                "citations": Citations(len(group), tuple(cited[:CITED_PER_GROUP]), tuple(r["nct_id"] for r in group)),
+            }
+        )
+    association = tuple(n for n in primary.notes if n.startswith("Spearman"))
+    return (
+        Visualization(
+            ChartType.BAR,
+            _title(primary, f"Median {y.title.lower()} by {x.title.lower()}"),
+            {
+                "x": Channel("range", FieldType.ORDINAL, x.title, order=tuple(b["range"] for b in bars), unit=x.unit),
+                "y": Channel("median", FieldType.QUANTITATIVE, f"Median {y.title.lower()}", unit=y.unit),
+                "tooltip": Channel("trial_count", FieldType.QUANTITATIVE, "Trials", unit="trials"),
+            },
+            bars,
+            (
+                f"The scatter's trials split into {len(bars)} groups of about equal size by {x.title.lower()}; "
+                f"each bar is a group's median {y.title.lower()}.",
+                *association,
+            ),
+        ),
     )
 
 

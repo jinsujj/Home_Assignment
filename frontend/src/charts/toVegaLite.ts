@@ -5,7 +5,7 @@ import type { Channel, Row, Visualization } from '../api/types'
 // Translates the service's chart spec into Vega-Lite using only `type` and `encoding`;
 // nothing here knows which question produced the chart.
 
-const title = (c: Channel) => (c.unit && c.type === 'quantitative' ? `${c.title} (${c.unit})` : c.title)
+const title = (c: Channel) => (c.unit && (c.type === 'quantitative' || c.type === 'ordinal') ? `${c.title} (${c.unit})` : c.title)
 
 function axisChannel(c: Channel) {
   // time_unit "year" carries plain year numbers, so they plot as integers rather than timestamps.
@@ -20,6 +20,15 @@ function axisChannel(c: Channel) {
     ...(c.order ? { sort: c.order } : {}),
     ...(categorical ? { axis: { labelAngle: -30, labelLimit: 180 } } : {}),
   }
+}
+
+/** Vega's symlog ticks are spaced linearly, so a log-like axis gets 0 and powers of ten. */
+function scaledChannel(c: Channel, rows: Row[]) {
+  if (c.scale !== 'symlog') return axisChannel(c)
+  const max = Math.max(...rows.map((r) => Number(r[c.field]) || 0))
+  const ticks = [0]
+  for (let tick = 10; tick <= max; tick *= 10) ticks.push(tick)
+  return { ...axisChannel(c), scale: { type: 'symlog' as const }, axis: { values: ticks } }
 }
 
 function seriesChannel(c: Channel) {
@@ -42,7 +51,7 @@ export function toVegaLite(viz: Visualization): TopLevelSpec {
     height: 380,
     autosize: { type: 'fit' as const, contains: 'padding' as const },
   }
-  const tooltipFields = () => tips(x, series, y)
+  const tooltipFields = () => tips(x, series, y, tooltip)
 
   switch (viz.type) {
     case 'bar_chart':
@@ -113,8 +122,8 @@ export function toVegaLite(viz: Visualization): TopLevelSpec {
         data: { values: rows },
         mark: { type: 'point', filled: true, opacity: 0.55 },
         encoding: {
-          x: axisChannel(x),
-          y: axisChannel(y),
+          x: scaledChannel(x, rows),
+          y: scaledChannel(y, rows),
           tooltip: [
             ...(tooltip ? [{ field: tooltip.field, title: tooltip.title }] : []),
             { field: x.field, title: title(x) },

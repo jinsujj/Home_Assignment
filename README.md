@@ -164,9 +164,9 @@ cohorts) are rejected with `422` and an explanation; ClinicalTrials.gov failures
 ### Visualization spec (implemented)
 
 `encoding` maps visual channels to data fields. Every channel is
-`{ field, type, title, order, unit, time_unit }`, where `type` is one of `nominal`, `ordinal`,
-`quantitative`, `temporal` (Vega-Lite's measurement types) and `order`, when present, is the
-category order to render.
+`{ field, type, title, order, unit, time_unit, scale }`, where `type` is one of `nominal`, `ordinal`,
+`quantitative`, `temporal` (Vega-Lite's measurement types), `order`, when present, is the
+category order to render, and `scale` is `null` (linear) or `"symlog"` (log-like, keeping zeros).
 
 | `type` | Channels | Data |
 |---|---|---|
@@ -174,7 +174,7 @@ category order to render.
 | `grouped_bar_chart` | `x`, `y`, `series` | one row per category × series, zeros included |
 | `time_series` | `x` (temporal, `time_unit: "year"`), `y`, optional `series` | one row per year, gaps filled with 0 |
 | `histogram` | `x` (`bin_start`), `x2` (`bin_end`), `y` | one row per bin; bins are `[bin_start, bin_end)`; the last bin may be open (`bin_end: null`) |
-| `scatter_plot` | `x`, `y`, `tooltip` | one row per trial (`nct_id`, `title`, both measures) |
+| `scatter_plot` | `x`, `y`, `tooltip` | one row per trial (`nct_id`, `title`, both measures); an axis whose largest value is at least 10 times its median gets `scale: "symlog"`; `notes` state Spearman's rank correlation in words |
 | `network_graph` | `node_id`, `node_label`, `node_size`, `node_color` (cluster), `node_shape` (entity kind), `edge_source`, `edge_target`, `edge_weight` (shared trials), `edge_strength` (association) | `{ "nodes": [...], "edges": [...] }`; nodes carry `community` (cluster name or null), `anchor` (bool), `partners` (linked nodes); edges carry `association` (Jaccard, 0–1) |
 
 Alternative views (`alternatives`) add these types; each item also carries its own `notes`:
@@ -352,6 +352,7 @@ primary's type and encoding.
 | `time_series` | cumulative `time_series` | growth and total in one view |
 | `network_graph` | `heatmap` (adjacency matrix), `bar_chart` (strongest links) | dense networks are hard to read; the matrix and ranking give exact values |
 | `histogram` | `line_chart` (cumulative distribution) | "what share of trials enroll fewer than N" reads directly |
+| `scatter_plot` | `bar_chart` (median y per fifth of the trials by x) | answers "does y rise with x?" directly, unmoved by a few huge trials |
 
 Rates (adverse events in %) get a heatmap but no 100% stack, which would add up rates of
 different events. The map joins countries by ISO 3166-1 numeric code from a table of the

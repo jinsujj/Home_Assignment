@@ -60,6 +60,7 @@ async def test_runs_a_plan_and_returns_spec_with_citations_and_meta() -> None:
         "order": ["Phase 2"],
         "unit": None,
         "time_unit": None,
+        "scale": None,
     }
     assert viz["data"] == [
         {
