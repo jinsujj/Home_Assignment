@@ -58,7 +58,7 @@ export function Composer({ query, onQueryChange, fields, onFieldsChange, options
         <div className="active-filters">
           {active.map((key) => (
             <span key={key} className="chip on">
-              {NAMES[key]}: {shown(key)}
+              <span>{`${NAMES[key]}: ${shown(key)}`}</span>
               <button type="button" aria-label={`Remove the ${NAMES[key]} filter`} onClick={() => remove(key)}>
                 ×
               </button>
@@ -86,17 +86,11 @@ export function Composer({ query, onQueryChange, fields, onFieldsChange, options
             aria-expanded={showFilters}
             onClick={() => setShowFilters(!showFilters)}
           >
-            Filters{active.length > 0 && ` · ${active.length}`}
+            {active.length > 0 ? `Filters · ${active.length}` : 'Filters'}
           </button>
           <button className="primary" type="submit" disabled={loading || !query.trim()}>
-            {loading ? (
-              <>
-                <span className="spinner" aria-hidden="true" />
-                Working…
-              </>
-            ) : (
-              'Ask'
-            )}
+            {loading && <span className="spinner" aria-hidden="true" />}
+            <span>{loading ? 'Working…' : 'Ask'}</span>
           </button>
         </div>
       </div>

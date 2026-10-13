@@ -41,12 +41,12 @@ export function CitationPanel({ selection, names }: Props) {
   return (
     <div>
       <h3>
-        {label} <span className="muted">· {count.toLocaleString()} trials</span>
+        <span>{label}</span> <span className="muted">{`· ${count.toLocaleString()} trials`}</span>
       </h3>
       {citations.items.length < citations.total && (
         <p className="muted">
-          Showing {citations.items.length} of {citations.total.toLocaleString()} cited trials
-          {citations.total < count && ' (the analyzed ones; the count covers every matching trial)'}.
+          {`Showing ${citations.items.length} of ${citations.total.toLocaleString()} cited trials` +
+            (citations.total < count ? ' (the analyzed ones; the count covers every matching trial).' : '.')}
         </p>
       )}
       {citations.registry_query && (
@@ -61,9 +61,9 @@ export function CitationPanel({ selection, names }: Props) {
         <p>
           <button type="button" className="secondary small" onClick={judge} disabled={judging}>
             {judging && <span className="spinner" aria-hidden="true" />}
-            Ask AI what {names[0]} is to these trials
+            <span>{`Ask AI what ${names[0]} is to these trials`}</span>
           </button>
-          {problem && <span className="muted"> {problem}</span>}
+          {problem && <span className="muted">{` ${problem}`}</span>}
         </p>
       )}
       {verdicts && (

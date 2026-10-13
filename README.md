@@ -623,6 +623,14 @@ the renderer (pre-binned histograms need `bin: {binned: true}` in Vega-Lite) and
 spec (a country typed as "korea" filtered correctly, but the title did not show it, so the
 chart looked unfiltered; titles now name shared filters).
 
+Browser page translation replaces text nodes with its own elements, so React then fails to
+insert or remove next to them ("Failed to execute 'insertBefore' on 'Node'") and drops the whole
+page. A script that mimics it (every text node wrapped in `<font>`, new text translated as it
+appears) crashed the demo on the first question. Text that changes or sits beside conditional
+content is now its own element holding a single string, which React replaces whole; the same
+script then ran 13 interactions (asking, switching views, selecting data, filters, Recent, the
+AI check) without an error, and changed text such as the interpretation updates.
+
 ### Monorepo and Docker
 
 One repository, two folders (`backend/`, `frontend/`) and a `docker-compose.yml`; with a single

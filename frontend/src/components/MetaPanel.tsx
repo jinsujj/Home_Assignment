@@ -25,7 +25,7 @@ export function MetaPanel({ meta, onSelect }: Props) {
                 <td>{c.label || '—'}</td>
                 <td>{c.matched.toLocaleString()}</td>
                 <td>
-                  {c.analyzed.toLocaleString()}
+                  <span>{c.analyzed.toLocaleString()}</span>
                   {c.truncated && <span className="badge">truncated</span>}
                   {c.exact_counts && <span className="badge">exact counts</span>}
                 </td>
@@ -39,7 +39,7 @@ export function MetaPanel({ meta, onSelect }: Props) {
           const citations = cited.get(note)
           return (
             <li key={note}>
-              {note}
+              <span>{note}</span>
               {citations && (
                 <>
                   {' '}
@@ -61,8 +61,7 @@ export function MetaPanel({ meta, onSelect }: Props) {
         <pre>{JSON.stringify(meta.plan, null, 2)}</pre>
       </details>
       <p className="muted">
-        Source: {meta.source}
-        {meta.data_version && ` · data snapshot ${meta.data_version}`}
+        {`Source: ${meta.source}` + (meta.data_version ? ` · data snapshot ${meta.data_version}` : '')}
       </p>
     </div>
   )

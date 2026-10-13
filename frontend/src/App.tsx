@@ -228,8 +228,8 @@ export default function App() {
               {history.map((entry) => (
                 <li key={entry.key}>
                   <button className={entry.key === activeKey ? 'active' : ''} onClick={() => open(entry)}>
-                    {entry.query}
-                    {Object.keys(entry.fields).length > 0 && <span className="muted"> ({describeFields(entry.fields)})</span>}
+                    <span>{entry.query}</span>
+                    {Object.keys(entry.fields).length > 0 && <span className="muted">{` (${describeFields(entry.fields)})`}</span>}
                     {entry.notice && <span className="muted"> · no chart</span>}
                   </button>
                 </li>
@@ -275,19 +275,19 @@ export default function App() {
               <header className={loading ? 'stale' : ''}>
                 <span className="type">{viz.type}</span>
                 {result.meta.data_version && (
-                  <span className="muted"> ClinicalTrials.gov data of {snapshot(result.meta.data_version)}</span>
+                  <span className="muted">{` ClinicalTrials.gov data of ${snapshot(result.meta.data_version)}`}</span>
                 )}
                 {loading && (
                   <span className="muted">
                     {' '}
                     <span className="spinner" aria-hidden="true" />
-                    Working…
+                    <span>Working…</span>
                   </span>
                 )}
                 <h2>{viz.title}</h2>
                 {result.meta.interpretation && (
                   <p className="interpretation">
-                    <strong>Understood as:</strong> {result.meta.interpretation}
+                    <strong>Understood as:</strong> <span>{result.meta.interpretation}</span>
                   </p>
                 )}
                 {result.meta.trial && (
@@ -296,7 +296,7 @@ export default function App() {
                     <a href={result.meta.trial.url} target="_blank" rel="noreferrer">
                       {result.meta.trial.nct_id}
                     </a>{' '}
-                    {result.meta.trial.title}
+                    <span>{result.meta.trial.title}</span>
                     {result.meta.trial.alternatives.length > 0 && (
                       <ul>
                         {result.meta.trial.alternatives.map((t) => (
@@ -305,7 +305,7 @@ export default function App() {
                             <a href={t.url} target="_blank" rel="noreferrer">
                               {t.nct_id}
                             </a>{' '}
-                            {t.title} ({t.enrollment ?? '?'} participants){' '}
+                            <span>{`${t.title} (${t.enrollment ?? '?'} participants)`}</span>{' '}
                             <button type="button" className="link" onClick={() => showTrial(t.nct_id)}>
                               Show this trial
                             </button>
