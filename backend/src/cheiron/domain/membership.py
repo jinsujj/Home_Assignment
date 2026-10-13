@@ -97,6 +97,7 @@ def memberships(
     }
     evidence: dict[str, list[Evidence]] = {t.nct_id: [] for t in trials}
     only: dict[str, list[str]] = {t.nct_id: [] for t in trials}
+    aliases: dict[str, list[str]] = {t.nct_id: [] for t in trials}
     # A trial that only mentions the drug may call it by the name most trials register for it.
     common: list[str] = []
     for criterion, term, ids in checked:
@@ -106,17 +107,29 @@ def memberships(
                 only[trial.nct_id].append(term)
             elif match := _match(trial, criterion, term, frequency[criterion]):
                 evidence[trial.nct_id].append(match)
-                matched[match.value] += 1
-        common += [value for value, _ in matched.most_common(1)]
+                names = _aliases(trial, match)
+                aliases[trial.nct_id] += names
+                matched[names[0]] += 1
+        common += [name for name, _ in matched.most_common(1)]
     terms = [term for _, term, _ in checked]
     return {
         t.nct_id: Membership(
             tuple(evidence[t.nct_id]),
             tuple(only[t.nct_id]),
-            tuple(dict.fromkeys(terms + [e.value for e in evidence[t.nct_id]] + common)),
+            tuple(dict.fromkeys(terms + aliases[t.nct_id] + common)),
         )
         for t in trials
     }
+
+
+def _aliases(trial: Trial, match: Evidence) -> list[str]:
+    """Every name of the matched intervention, its own name first: a "Keytruda" filter matches
+    the other name "Keytruda", while titles and descriptions say "Pembrolizumab"."""
+    if match.field in (INTERVENTION_NAME, INTERVENTION_OTHER_NAME):
+        for i in trial.interventions:
+            if match.value == i.name or match.value in i.other_names:
+                return [i.name, *i.other_names]
+    return [match.value]
 
 
 def mention_passage(texts: Mapping[str, Sequence[str]], names: Sequence[str]) -> Evidence | None:

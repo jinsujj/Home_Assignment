@@ -124,3 +124,17 @@ def test_a_short_sentence_is_kept_whole_wherever_the_name_is() -> None:
     title = "Ph3 Study of Exemestane With or Without Entinostat in Chinese Patients With Hormone Receptor-Positive, Locally Advanced or Metastatic Breast Cancer"
 
     assert mention_passage({BRIEF_SUMMARY: (title,)}, ["breast cancer"]).value == title
+
+
+def test_a_brand_name_filter_finds_passages_by_the_drugs_own_name() -> None:
+    pembrolizumab = Intervention("Pembrolizumab", InterventionType.DRUG, ("Keytruda", "MK-3475"))
+    trials = [trial("NCT1", interventions=(pembrolizumab,)), trial("NCT2", interventions=(drug("Omega-3"),))]
+
+    found = memberships(trials, TrialFilter(intervention="Keytruda"), {"intervention": frozenset({"NCT2"})})
+
+    assert found["NCT1"].evidence == (Evidence(INTERVENTION_OTHER_NAME, "Keytruda"),)
+    assert found["NCT1"].names == ("Keytruda", "Pembrolizumab", "MK-3475")
+    # A trial that only mentions it is searched for the drug's own name too.
+    assert found["NCT2"].names == ("Keytruda", "Pembrolizumab")
+    title = {BRIEF_SUMMARY: ("Pembrolizumab and Lenvatinib for gastric cancer.",)}
+    assert found["NCT1"].with_passage(title).evidence[-1] == Evidence(BRIEF_SUMMARY, "Pembrolizumab and Lenvatinib for gastric cancer.")
